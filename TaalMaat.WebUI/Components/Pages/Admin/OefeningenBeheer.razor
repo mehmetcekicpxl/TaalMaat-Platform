@@ -1,0 +1,545 @@
+@page "/admin/oefeningen"
+@attribute [Authorize(Roles = "Admin")]
+@inject OefeningService OefeningService
+@inject ExterneBronService ExterneBronService
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Oefeningen Beheer – TaalMaat Admin</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Oefeningen beheer</MudText>
+
+<MudTabs Elevation="2" Rounded="true" ApplyEffectsToContainer="true" PanelClass="pa-4">
+    <MudTabPanel Text="Oefeningen" Icon="@Icons.Material.Filled.MenuBook">
+
+<MudButton Variant="Variant.Filled" Color="Color.Success" StartIcon="@Icons.Material.Filled.Add"
+           OnClick="NieuweOefening" Class="mb-4">
+    Nieuwe oefening
+</MudButton>
+
+<!-- Formulier voor aanmaken/bewerken -->
+@if (_bewerkOefening != null)
+{
+    <MudPaper Elevation="4" Class="pa-6 mb-6">
+        <MudText Typo="Typo.h6" Class="mb-4">@(_bewerkOefening.Id == 0 ? "Nieuwe oefening" : "Oefening bewerken")</MudText>
+
+        <MudTextField @bind-Value="_bewerkOefening.Titel" Label="Titel" Variant="Variant.Outlined" Class="mb-4" Required="true" />
+
+        <MudSelect @bind-Value="_bewerkOefening.Niveau" Label="Taalniveau" Variant="Variant.Outlined" Class="mb-4">
+            @foreach (OefeningNiveau niveau in Enum.GetValues(typeof(OefeningNiveau)))
+            {
+                <MudSelectItem Value="niveau">@niveau.ToString()</MudSelectItem>
+            }
+        </MudSelect>
+
+        <!-- Type selectie -->
+        <MudSelect @bind-Value="_geselecteerdType" Label="Type oefening" Variant="Variant.Outlined" Class="mb-4">
+            <MudSelectItem Value="@("Lezen")">📄 Lezen (leestekst)</MudSelectItem>
+            <MudSelectItem Value="@("Luisteren")">🎧 Luisteren (audio)</MudSelectItem>
+            <MudSelectItem Value="@("Kijken")">▶️ Kijken (YouTube video)</MudSelectItem>
+        </MudSelect>
+
+        <!-- Type-specifieke velden -->
+        @if (_geselecteerdType == "Kijken")
+        {
+            <MudTextField @bind-Value="_bewerkOefening.YouTubeUrl" Label="YouTube embed-URL"
+                          Variant="Variant.Outlined" Class="mb-4"
+                          HelperText="Bijv. https://www.youtube.com/embed/VIDEO_ID" />
+        }
+        @if (_geselecteerdType == "Luisteren")
+        {
+            <MudTextField @bind-Value="_bewerkOefening.AudioUrl" Label="Audio-URL"
+                          Variant="Variant.Outlined" Class="mb-4"
+                          HelperText="Directe link naar het MP3/audio-bestand" />
+        }
+
+        <!-- Leestekst altijd beschikbaar voor extra context -->
+        <MudTextField @bind-Value="_bewerkOefening.Inhoud"
+                      Label="@(_geselecteerdType == "Lezen" ? "Leestekst (verplicht voor leesoefening)" : "Beschrijving / extra tekst (optioneel)")"
+                      Variant="Variant.Outlined" Lines="6" Class="mb-4" />
+
+        <MudCheckBox @bind-Value="_bewerkOefening.IsGoedgekeurd" Label="Goedgekeurd voor publicatie" Color="Color.Success" Class="mb-4" />
+
+        <!-- === VRAGEN SECTIE === -->
+        <MudDivider Class="my-4" />
+        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-4">
+            <MudText Typo="Typo.h6">❓ Vragen (@_bewerkVragen.Count)</MudText>
+            <MudSpacer />
+            <MudButton Variant="Variant.Filled" Color="Color.Info" StartIcon="@Icons.Material.Filled.AddCircle"
+                       OnClick="VoegVraagToe" Size="Size.Small">
+                Vraag toevoegen
+            </MudButton>
+        </MudStack>
+
+        @for (int i = 0; i < _bewerkVragen.Count; i++)
+        {
+            var index = i;
+            var vraag = _bewerkVragen[index];
+
+            <MudPaper Elevation="2" Class="pa-4 mb-4" Style="border-left: 4px solid #1976d2;">
+                <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-3">
+                    <MudText Typo="Typo.subtitle1" Style="font-weight:bold;">Vraag @(index + 1)</MudText>
+                    <MudSpacer />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                   Title="Vraag verwijderen" OnClick="() => VerwijderVraag(index)" />
+                </MudStack>
+
+                <MudTextField @bind-Value="vraag.VraagTekst" Label="Vraagtekst" Variant="Variant.Outlined"
+                              Class="mb-3" Required="true" />
+
+                <MudGrid Spacing="2" Class="mb-3">
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="vraag.OptieA" Label="A" Variant="Variant.Outlined" Required="true"
+                                      Adornment="Adornment.Start" AdornmentText="A" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="vraag.OptieB" Label="B" Variant="Variant.Outlined" Required="true"
+                                      Adornment="Adornment.Start" AdornmentText="B" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="vraag.OptieC" Label="C" Variant="Variant.Outlined" Required="true"
+                                      Adornment="Adornment.Start" AdornmentText="C" />
+                    </MudItem>
+                    <MudItem xs="12" sm="6">
+                        <MudTextField @bind-Value="vraag.OptieD" Label="D" Variant="Variant.Outlined" Required="true"
+                                      Adornment="Adornment.Start" AdornmentText="D" />
+                    </MudItem>
+                </MudGrid>
+
+                <MudSelect @bind-Value="vraag.JuistAntwoordIndex" Label="Juist antwoord" Variant="Variant.Outlined"
+                           HelperText="Selecteer het juiste antwoord">
+                    <MudSelectItem Value="0">A — @vraag.OptieA</MudSelectItem>
+                    <MudSelectItem Value="1">B — @vraag.OptieB</MudSelectItem>
+                    <MudSelectItem Value="2">C — @vraag.OptieC</MudSelectItem>
+                    <MudSelectItem Value="3">D — @vraag.OptieD</MudSelectItem>
+                </MudSelect>
+            </MudPaper>
+        }
+
+        @if (_bewerkVragen.Count == 0)
+        {
+            <MudAlert Severity="Severity.Info" Class="mb-4">
+                Nog geen vragen toegevoegd. Klik op "Vraag toevoegen" om een vraag aan te maken.
+            </MudAlert>
+        }
+
+        <MudStack Row="true" Spacing="2" Class="mt-4">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpslaanOefening"
+                       StartIcon="@Icons.Material.Filled.Save">Opslaan</MudButton>
+            <MudButton Variant="Variant.Outlined" OnClick="AnnulerenBewerking">Annuleren</MudButton>
+        </MudStack>
+    </MudPaper>
+}
+
+@if (_oefeningen == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudDataGrid Items="_oefeningen" Dense="true" Filterable="false">
+        <Columns>
+            <PropertyColumn Property="o => o.Titel" Title="Titel" />
+            <PropertyColumn Property="o => o.Niveau" Title="Niveau" />
+            <TemplateColumn Title="Type">
+                <CellTemplate>
+                    @{
+                        var type = BepaalType(context.Item);
+                    }
+                    @if (type == "Kijken")
+                    {
+                        <MudChip T="string" Color="Color.Error" Size="Size.Small">▶️ Kijken</MudChip>
+                    }
+                    else if (type == "Luisteren")
+                    {
+                        <MudChip T="string" Color="Color.Warning" Size="Size.Small">🎧 Luisteren</MudChip>
+                    }
+                    else
+                    {
+                        <MudChip T="string" Color="Color.Primary" Size="Size.Small">📄 Lezen</MudChip>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Vragen">
+                <CellTemplate>@context.Item.Vragen.Count</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Goedgekeurd">
+                <CellTemplate>
+                    <MudIcon Icon="@(context.Item.IsGoedgekeurd ? Icons.Material.Filled.CheckCircle : Icons.Material.Filled.Cancel)"
+                             Color="@(context.Item.IsGoedgekeurd ? Color.Success : Color.Error)" />
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn Property="o => o.AangemaaktOp" Title="Aangemaakt" Format="dd/MM/yyyy" />
+            <TemplateColumn Title="Acties">
+                <CellTemplate>
+                    @if (!context.Item.IsGoedgekeurd)
+                    {
+                        <MudIconButton Icon="@Icons.Material.Filled.Approval" Color="Color.Success"
+                                       Title="Goedkeuren" OnClick="() => KeurGoed(context.Item.Id)" />
+                    }
+                    <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary"
+                                   Title="Bewerken" OnClick="() => BewerkenOefening(context.Item)" />
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                   Title="Verwijderen" OnClick="() => VerwijderenOefening(context.Item.Id)" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+
+    </MudTabPanel>
+
+    <MudTabPanel Text="Externe Bronnen" Icon="@Icons.Material.Filled.Link">
+        <MudText Typo="Typo.subtitle1" Class="mb-4 mud-text-secondary">
+            Voeg hier nuttige externe oefenplatformen en bronnen toe (zoals Nedbox). Deze worden getoond op de zelfstudiepagina.
+        </MudText>
+
+        <MudPaper Class="pa-4 mb-4" Elevation="3">
+            <MudText Typo="Typo.h6" Class="mb-2">@(_bewerkBron?.Id == 0 ? "Nieuwe bron toevoegen" : "Bron bewerken")</MudText>
+            <MudTextField @bind-Value="_bronTitel" Label="Titel" Variant="Variant.Outlined" Class="mb-2" Placeholder="Bijv. Nedbox – Online Nederlands oefenen" />
+            <MudTextField @bind-Value="_bronUrl" Label="URL" Variant="Variant.Outlined" Class="mb-2" Placeholder="https://www.nedbox.be" />
+            <MudTextField @bind-Value="_bronBeschrijving" Label="Beschrijving (optioneel)" Variant="Variant.Outlined" Lines="2" Class="mb-2" Placeholder="Korte beschrijving van de bron..." />
+            <MudStack Row="true" Spacing="2">
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="OpslaanBron"
+                           StartIcon="@Icons.Material.Filled.Save"
+                           Disabled="@(string.IsNullOrWhiteSpace(_bronTitel) || string.IsNullOrWhiteSpace(_bronUrl))">
+                    Opslaan
+                </MudButton>
+                @if (_bewerkBron != null && _bewerkBron.Id != 0)
+                {
+                    <MudButton Variant="Variant.Outlined" OnClick="AnnuleerBronBewerking">Annuleren</MudButton>
+                }
+            </MudStack>
+        </MudPaper>
+
+        @if (_externeBronnen == null)
+        {
+            <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+        }
+        else if (!_externeBronnen.Any())
+        {
+            <MudAlert Severity="Severity.Info">Nog geen externe bronnen toegevoegd.</MudAlert>
+        }
+        else
+        {
+            <MudDataGrid Items="_externeBronnen" Dense="true" Filterable="false">
+                <Columns>
+                    <PropertyColumn Property="b => b.Titel" Title="Titel" />
+                    <TemplateColumn Title="URL">
+                        <CellTemplate>
+                            <MudLink Href="@context.Item.Url" Target="_blank" Color="Color.Primary">@context.Item.Url</MudLink>
+                        </CellTemplate>
+                    </TemplateColumn>
+                    <PropertyColumn Property="b => b.Beschrijving" Title="Beschrijving" />
+                    <PropertyColumn Property="b => b.ToegevoegdOp" Title="Toegevoegd" Format="dd/MM/yyyy" />
+                    <TemplateColumn Title="Acties">
+                        <CellTemplate>
+                            <MudIconButton Icon="@Icons.Material.Filled.Edit" Color="Color.Primary" Size="Size.Small"
+                                           Title="Bewerken" OnClick="() => BewerkBron(context.Item)" />
+                            <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" Size="Size.Small"
+                                           Title="Verwijderen" OnClick="() => VerwijderBron(context.Item.Id)" />
+                        </CellTemplate>
+                    </TemplateColumn>
+                </Columns>
+            </MudDataGrid>
+        }
+    </MudTabPanel>
+</MudTabs>
+
+@code {
+    private List<Oefening>? _oefeningen;
+    private Oefening? _bewerkOefening;
+    private List<VraagEditModel> _bewerkVragen = new();
+    private string _geselecteerdType = "Lezen";
+
+    // Externe bronnen
+    private List<TaalMaat.Core.Entities.ExterneBron>? _externeBronnen;
+    private TaalMaat.Core.Entities.ExterneBron? _bewerkBron = new() { Id = 0 };
+    private string _bronTitel = string.Empty;
+    private string _bronUrl = string.Empty;
+    private string _bronBeschrijving = string.Empty;
+
+    /// <summary>
+    /// Hulp-model om een vraag met 4 opties overzichtelijk te bewerken in het formulier.
+    /// </summary>
+    private class VraagEditModel
+    {
+        public int Id { get; set; }
+        public string VraagTekst { get; set; } = string.Empty;
+        public string OptieA { get; set; } = string.Empty;
+        public string OptieB { get; set; } = string.Empty;
+        public string OptieC { get; set; } = string.Empty;
+        public string OptieD { get; set; } = string.Empty;
+        public int JuistAntwoordIndex { get; set; } = 0;
+
+        public string JuistAntwoord => JuistAntwoordIndex switch
+        {
+            0 => OptieA,
+            1 => OptieB,
+            2 => OptieC,
+            3 => OptieD,
+            _ => OptieA
+        };
+
+        public string OptiesJson => System.Text.Json.JsonSerializer.Serialize(
+            new[] { OptieA, OptieB, OptieC, OptieD });
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        _oefeningen = (await OefeningService.GetAllAsync()).ToList();
+        // Haal de externe bronnen op bij het laden van de pagina
+        _externeBronnen = (await ExterneBronService.GetAllAsync()).ToList();
+    }
+
+    /// <summary>
+    /// Bepaalt het type oefening op basis van de ingevulde velden.
+    /// </summary>
+    private string BepaalType(Oefening oe)
+    {
+        if (!string.IsNullOrEmpty(oe.YouTubeUrl)) return "Kijken";
+        if (!string.IsNullOrEmpty(oe.AudioUrl)) return "Luisteren";
+        return "Lezen";
+    }
+
+    private void NieuweOefening()
+    {
+        _bewerkOefening = new Oefening { AangemaaktOp = DateTime.UtcNow };
+        _bewerkVragen = new List<VraagEditModel>();
+        _geselecteerdType = "Lezen";
+    }
+
+    private void BewerkenOefening(Oefening oe)
+    {
+        _bewerkOefening = new Oefening
+        {
+            Id = oe.Id,
+            Titel = oe.Titel,
+            Inhoud = oe.Inhoud,
+            YouTubeUrl = oe.YouTubeUrl,
+            AudioUrl = oe.AudioUrl,
+            Niveau = oe.Niveau,
+            IsGoedgekeurd = oe.IsGoedgekeurd,
+            AangemaaktOp = oe.AangemaaktOp
+        };
+
+        _geselecteerdType = BepaalType(oe);
+
+        // Bestaande vragen laden in het edit-model
+        _bewerkVragen = oe.Vragen.Select(v =>
+        {
+            var opties = System.Text.Json.JsonSerializer.Deserialize<List<string>>(v.OptiesJson) ?? new();
+            // Zoek welke index overeenkomt met het juiste antwoord
+            var juistIndex = opties.IndexOf(v.JuistAntwoord);
+            if (juistIndex < 0) juistIndex = 0;
+
+            return new VraagEditModel
+            {
+                Id = v.Id,
+                VraagTekst = v.VraagTekst,
+                OptieA = opties.ElementAtOrDefault(0) ?? string.Empty,
+                OptieB = opties.ElementAtOrDefault(1) ?? string.Empty,
+                OptieC = opties.ElementAtOrDefault(2) ?? string.Empty,
+                OptieD = opties.ElementAtOrDefault(3) ?? string.Empty,
+                JuistAntwoordIndex = juistIndex
+            };
+        }).ToList();
+    }
+
+    private void VoegVraagToe()
+    {
+        _bewerkVragen.Add(new VraagEditModel());
+    }
+
+    private void VerwijderVraag(int index)
+    {
+        if (index >= 0 && index < _bewerkVragen.Count)
+            _bewerkVragen.RemoveAt(index);
+    }
+
+    private async Task OpslaanOefening()
+    {
+        if (_bewerkOefening == null) return;
+
+        // Validatie
+        if (string.IsNullOrWhiteSpace(_bewerkOefening.Titel))
+        {
+            Snackbar.Add("Vul een titel in.", Severity.Error);
+            return;
+        }
+
+        // Type-velden correct zetten (ongebruikte velden leegmaken)
+        if (_geselecteerdType != "Kijken") _bewerkOefening.YouTubeUrl = null;
+        if (_geselecteerdType != "Luisteren") _bewerkOefening.AudioUrl = null;
+
+        // YouTube-URL automatisch converteren naar embed-formaat
+        if (!string.IsNullOrEmpty(_bewerkOefening.YouTubeUrl))
+            _bewerkOefening.YouTubeUrl = ConverteerNaarEmbedUrl(_bewerkOefening.YouTubeUrl);
+
+        // Vragen valideren en converteren
+        var vragen = new List<OefeningVraag>();
+        foreach (var vm in _bewerkVragen)
+        {
+            if (string.IsNullOrWhiteSpace(vm.VraagTekst))
+            {
+                Snackbar.Add("Elke vraag moet een vraagtekst hebben.", Severity.Error);
+                return;
+            }
+            if (string.IsNullOrWhiteSpace(vm.OptieA) || string.IsNullOrWhiteSpace(vm.OptieB) ||
+                string.IsNullOrWhiteSpace(vm.OptieC) || string.IsNullOrWhiteSpace(vm.OptieD))
+            {
+                Snackbar.Add("Elke vraag moet 4 opties hebben (A, B, C, D).", Severity.Error);
+                return;
+            }
+
+            vragen.Add(new OefeningVraag
+            {
+                Id = vm.Id,
+                VraagTekst = vm.VraagTekst,
+                OptiesJson = vm.OptiesJson,
+                JuistAntwoord = vm.JuistAntwoord
+            });
+        }
+
+        _bewerkOefening.Vragen = vragen;
+
+        if (_bewerkOefening.Id == 0)
+        {
+            await OefeningService.MaakOefeningAanAsync(_bewerkOefening);
+        }
+        else
+        {
+            await OefeningService.UpdateOefeningAsync(_bewerkOefening);
+        }
+
+        _bewerkOefening = null;
+        _bewerkVragen.Clear();
+        _oefeningen = (await OefeningService.GetAllAsync()).ToList();
+        Snackbar.Add("Oefening opgeslagen!", Severity.Success);
+    }
+
+    private void AnnulerenBewerking()
+    {
+        _bewerkOefening = null;
+        _bewerkVragen.Clear();
+    }
+
+    private async Task KeurGoed(int id)
+    {
+        await OefeningService.KeurOefeningGoedAsync(id);
+        _oefeningen = (await OefeningService.GetAllAsync()).ToList();
+        Snackbar.Add("Oefening goedgekeurd!", Severity.Success);
+    }
+
+    private async Task VerwijderenOefening(int id)
+    {
+        await OefeningService.VerwijderOefeningAsync(id);
+        _oefeningen = (await OefeningService.GetAllAsync()).ToList();
+        Snackbar.Add("Oefening verwijderd.", Severity.Warning);
+    }
+
+    /// <summary>
+    /// Converteert elke YouTube-URL naar embed-formaat.
+    /// Ondersteunt: watch?v=, youtu.be/, en bestaande /embed/ URL's.
+    /// </summary>
+    private string ConverteerNaarEmbedUrl(string url)
+    {
+        if (string.IsNullOrWhiteSpace(url)) return url;
+
+        // Al in embed-formaat?
+        if (url.Contains("/embed/")) return url.Split('?')[0].Split('&')[0];
+
+        // Standaard watch URL: https://www.youtube.com/watch?v=VIDEO_ID&...
+        if (url.Contains("watch?v="))
+        {
+            var uri = new Uri(url);
+            var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+            var videoId = query["v"];
+            if (!string.IsNullOrEmpty(videoId))
+                return $"https://www.youtube.com/embed/{videoId}";
+        }
+
+        // Korte URL: https://youtu.be/VIDEO_ID
+        if (url.Contains("youtu.be/"))
+        {
+            var videoId = url.Split("youtu.be/")[1].Split('?')[0].Split('&')[0];
+            if (!string.IsNullOrEmpty(videoId))
+                return $"https://www.youtube.com/embed/{videoId}";
+        }
+
+        return url;
+    }
+
+    // === Methodes voor Externe Bronnen ===
+
+    private async Task OpslaanBron()
+    {
+        if (string.IsNullOrWhiteSpace(_bronTitel) || string.IsNullOrWhiteSpace(_bronUrl))
+        {
+            return;
+        }
+
+        if (_bewerkBron != null && _bewerkBron.Id == 0)
+        {
+            // Nieuwe bron aanmaken
+            var nieuweBron = new TaalMaat.Core.Entities.ExterneBron
+            {
+                Titel = _bronTitel,
+                Url = _bronUrl,
+                Beschrijving = _bronBeschrijving,
+                ToegevoegdOp = DateTime.UtcNow
+            };
+            await ExterneBronService.ToevoegenAsync(nieuweBron);
+            Snackbar.Add("Nieuwe bron toegevoegd!", Severity.Success);
+        }
+        else if (_bewerkBron != null)
+        {
+            // Bestaande bron updaten
+            _bewerkBron.Titel = _bronTitel;
+            _bewerkBron.Url = _bronUrl;
+            _bewerkBron.Beschrijving = _bronBeschrijving;
+            await ExterneBronService.UpdateAsync(_bewerkBron);
+            Snackbar.Add("Bron succesvol bijgewerkt!", Severity.Success);
+        }
+
+        AnnuleerBronBewerking();
+        // Lijst vernieuwen na het opslaan
+        _externeBronnen = (await ExterneBronService.GetAllAsync()).ToList();
+    }
+
+    private void AnnuleerBronBewerking()
+    {
+        // Formulier leegmaken en resetten
+        _bewerkBron = new TaalMaat.Core.Entities.ExterneBron { Id = 0 };
+        _bronTitel = string.Empty;
+        _bronUrl = string.Empty;
+        _bronBeschrijving = string.Empty;
+    }
+
+    private void BewerkBron(TaalMaat.Core.Entities.ExterneBron bron)
+    {
+        // Velden invullen met de gegevens van de geselecteerde bron
+        _bewerkBron = new TaalMaat.Core.Entities.ExterneBron
+        {
+            Id = bron.Id,
+            Titel = bron.Titel,
+            Url = bron.Url,
+            Beschrijving = bron.Beschrijving,
+            ToegevoegdOp = bron.ToegevoegdOp
+        };
+
+        _bronTitel = bron.Titel;
+        _bronUrl = bron.Url;
+        _bronBeschrijving = bron.Beschrijving ?? string.Empty;
+    }
+
+    private async Task VerwijderBron(int id)
+    {
+        // Bron verwijderen via de service
+        await ExterneBronService.VerwijderAsync(id);
+        // Lijst vernieuwen na het verwijderen
+        _externeBronnen = (await ExterneBronService.GetAllAsync()).ToList();
+        Snackbar.Add("Bron verwijderd.", Severity.Warning);
+    }
+}

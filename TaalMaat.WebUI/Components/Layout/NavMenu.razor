@@ -1,0 +1,70 @@
+@using Microsoft.AspNetCore.Components.Authorization
+@using Microsoft.AspNetCore.Identity
+@using TaalMaat.Core.Entities
+@using Microsoft.Extensions.DependencyInjection
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IServiceProvider ServiceProvider
+
+<AuthorizeView>
+    <Authorized>
+        <AuthorizeView Roles="Admin" Context="adminCtx">
+            <Authorized>
+                <MudNavMenu>
+                    <MudNavLink Href="/admin" Icon="@Icons.Material.Filled.Dashboard">Dashboard</MudNavLink>
+                    <MudNavLink Href="/admin/gebruikers" Icon="@Icons.Material.Filled.People">Gebruikers</MudNavLink>
+                    <MudNavLink Href="/admin/gemeenten" Icon="@Icons.Material.Filled.LocationCity">Gemeenten</MudNavLink>
+                    <MudNavLink Href="/admin/chatbeheer" Icon="@Icons.Material.Filled.Chat">Chat rapportages</MudNavLink>
+                    <MudNavLink Href="/admin/oefeningen" Icon="@Icons.Material.Filled.Book">Oefeningen</MudNavLink>
+                    
+                </MudNavMenu>
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Vrijwilliger" Context="vwCtx">
+            <Authorized>
+                @if (_isVrijwilligerGoedgekeurd)
+                {
+                    <MudNavMenu>
+                        <MudNavLink Href="/volunteer" Icon="@Icons.Material.Filled.Dashboard">Mijn Dashboard</MudNavLink>
+                        <MudNavLink Href="/volunteer/beschikbaarheid" Icon="@Icons.Material.Filled.CalendarMonth">Mijn Beschikbaarheid</MudNavLink>
+                        <MudNavLink Href="/volunteer/verzoeken" Icon="@Icons.Material.Filled.Inbox">Inkomende Verzoeken</MudNavLink>
+                        <MudNavLink Href="/volunteer/buddies" Icon="@Icons.Material.Filled.Group">Mijn Buddies</MudNavLink>
+                        <MudNavLink Href="/profiel" Icon="@Icons.Material.Filled.Person">Mijn Profiel</MudNavLink>
+                    </MudNavMenu>
+                }
+            </Authorized>
+        </AuthorizeView>
+
+        <AuthorizeView Roles="Anderstalig" Context="asCtx">
+            <Authorized>
+                <MudNavMenu>
+                    <MudNavLink Href="/student" Icon="@Icons.Material.Filled.Dashboard">Mijn Dashboard</MudNavLink>
+                    <MudNavLink Href="/student/zoeken" Icon="@Icons.Material.Filled.Search">Zoek Vrijwilliger</MudNavLink>
+                    <MudNavLink Href="/student/vrijwilligers" Icon="@Icons.Material.Filled.Group">Mijn Vrijwilligers</MudNavLink>
+                    <MudNavLink Href="/profiel" Icon="@Icons.Material.Filled.Person">Mijn Profiel</MudNavLink>
+                </MudNavMenu>
+            </Authorized>
+        </AuthorizeView>
+    </Authorized>
+</AuthorizeView>
+
+@code {
+    private bool _isVrijwilligerGoedgekeurd = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        if (authState.User.IsInRole("Vrijwilliger"))
+        {
+            var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (userId != null)
+            {
+                using var scope = ServiceProvider.CreateScope();
+                var userManager = scope.ServiceProvider.GetRequiredService<UserManager<ApplicationUser>>();
+                
+                var user = await userManager.FindByIdAsync(userId);
+                _isVrijwilligerGoedgekeurd = user != null && user.IsGeaccepteerd && user.HeeftWachtkamerGezien;
+            }
+        }
+    }
+}

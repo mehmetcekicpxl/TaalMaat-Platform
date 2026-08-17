@@ -1,0 +1,140 @@
+@page "/admin/gebruikers"
+@attribute [Authorize(Roles = "Admin")]
+@inject GebruikerService GebruikerService
+@inject ISnackbar Snackbar
+
+<PageTitle>Gebruikersbeheer – TaalMaat Admin</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gebruikersbeheer</MudText>
+
+@if (_gebruikers == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudDataGrid Items="_gebruikers" Filterable="false" SortMode="SortMode.Multiple" Dense="true">
+        <Columns>
+            <PropertyColumn Property="u => u.VolledigeNaam" Title="Naam" />
+            <PropertyColumn Property="u => u.Email" Title="E-mail" />
+            <PropertyColumn Property="u => u.ContactPhoneNumber" Title="Telefoon" />
+            <PropertyColumn Property="u => u.Rol" Title="Rol" />
+            <PropertyColumn Property="u => u.Gemeente.Naam" Title="Gemeente" />
+            <TemplateColumn Title="Status" CellClass="d-flex justify-center">
+                <CellTemplate>
+                    @if (context.Item.Rol == GebruikerRol.Vrijwilliger && context.Item.IsAfgekeurd)
+                    {
+                        <MudTooltip Text="Afgekeurd (wacht op verwijdering door gebruiker)">
+                            <MudIcon Icon="@Icons.Material.Filled.PersonRemove" Color="Color.Error" />
+                        </MudTooltip>
+                    }
+                    else if (context.Item.Rol == GebruikerRol.Vrijwilliger && !context.Item.IsGeaccepteerd)
+                    {
+                        <MudTooltip Text="Wacht op goedkeuring">
+                            <MudIcon Icon="@Icons.Material.Filled.HourglassEmpty" Color="Color.Warning" />
+                        </MudTooltip>
+                    }
+                    else if (!context.Item.IsActief)
+                    {
+                        <MudTooltip Text="Account tijdelijk geblokkeerd">
+                            <MudIcon Icon="@Icons.Material.Filled.Block" Color="Color.Error" />
+                        </MudTooltip>
+                    }
+                    else
+                    {
+                        <MudTooltip Text="Actief & Goedgekeurd">
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                        </MudTooltip>
+                    }
+                </CellTemplate>
+            </TemplateColumn>
+            <PropertyColumn Property="u => u.AangemaaktOp" Title="Geregistreerd" Format="dd/MM/yyyy" />
+            <TemplateColumn Title="Acties" HeaderStyle="width: 200px">
+                <CellTemplate>
+                    <div class="d-flex">
+                        @if (context.Item.Rol == GebruikerRol.Vrijwilliger && !context.Item.IsGeaccepteerd && !context.Item.IsAfgekeurd)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.CheckCircle"
+                                           Color="Color.Success"
+                                           Size="Size.Small"
+                                           Title="Goedkeuren"
+                                           OnClick="() => KeurGoed(context.Item.Id)" />
+                            
+                            <MudIconButton Icon="@Icons.Material.Filled.Cancel"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           Title="Afkeuren"
+                                           OnClick="() => KeurAf(context.Item.Id)" />
+                        }
+                        @if (context.Item.IsActief)
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Block"
+                                           Color="Color.Warning"
+                                           Size="Size.Small"
+                                           Title="Blokkeren"
+                                           OnClick="() => SchorsAccount(context.Item.Id)" />
+                        }
+                        else
+                        {
+                            <MudIconButton Icon="@Icons.Material.Filled.Restore"
+                                           Color="Color.Success"
+                                           Size="Size.Small"
+                                           Title="Opnieuw Activeren"
+                                           OnClick="() => ActiveerAccount(context.Item.Id)" />
+                            
+                            <MudIconButton Icon="@Icons.Material.Filled.DeleteForever"
+                                           Color="Color.Error"
+                                           Size="Size.Small"
+                                           Title="Permanent Verwijderen"
+                                           OnClick="() => VerwijderAccount(context.Item.Id)" />
+                        }
+                    </div>
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+@code {
+    private List<ApplicationUser>? _gebruikers;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _gebruikers = (await GebruikerService.GetAllAsync()).ToList();
+    }
+
+    private async Task KeurGoed(string id)
+    {
+        await GebruikerService.KeurGoedeAsync(id);
+        Snackbar.Add("Vrijwilliger goedgekeurd!", Severity.Success);
+        _gebruikers = (await GebruikerService.GetAllAsync()).ToList();
+    }
+
+    private async Task KeurAf(string id)
+    {
+        await GebruikerService.KeurAfAsync(id);
+        Snackbar.Add("Vrijwilliger afgekeurd.", Severity.Warning);
+        _gebruikers = (await GebruikerService.GetAllAsync()).ToList();
+    }
+
+    private async Task SchorsAccount(string id)
+    {
+        await GebruikerService.SchorsAccountAsync(id);
+        Snackbar.Add("Account geblokkeerd.", Severity.Warning);
+        _gebruikers = (await GebruikerService.GetAllAsync()).ToList();
+    }
+
+    private async Task ActiveerAccount(string id)
+    {
+        await GebruikerService.ActiveerAccountAsync(id);
+        Snackbar.Add("Account geactiveerd.", Severity.Success);
+        _gebruikers = (await GebruikerService.GetAllAsync()).ToList();
+    }
+
+    private async Task VerwijderAccount(string id)
+    {
+        await GebruikerService.DeleteAccountAsync(id);
+        Snackbar.Add("Account permanent verwijderd.", Severity.Error);
+        _gebruikers = (await GebruikerService.GetAllAsync()).ToList();
+    }
+}

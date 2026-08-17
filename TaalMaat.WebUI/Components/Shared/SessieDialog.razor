@@ -1,0 +1,47 @@
+<!-- SessieDialog: Afzonderlijke MudBlazor v7 dialog voor het plannen van sessies -->
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.CalendarMonth" Class="mr-2" />
+            Nieuwe sessie plannen
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudDatePicker @bind-Date="_datum"
+                       Label="Datum"
+                       Variant="Variant.Outlined"
+                       Class="mb-4"
+                       MinDate="DateTime.Today" />
+        <MudTimePicker @bind-Time="_tijd"
+                       Label="Tijdstip"
+                       Variant="Variant.Outlined"
+                       AmPm="false"
+                       Class="mb-4" />
+        <MudAlert Severity="Severity.Info" Dense="true">
+            De video-knop wordt actief @AanloopMinuten minuten vóór de sessie.
+        </MudAlert>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Annuleer" Variant="Variant.Outlined">Annuleren</MudButton>
+        <MudButton OnClick="Opslaan" Variant="Variant.Filled" Color="Color.Primary">
+            Sessie plannen
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public int AanloopMinuten { get; set; } = 10;
+
+    private DateTime? _datum = DateTime.Today.AddDays(1);
+    private TimeSpan? _tijd = new TimeSpan(10, 0, 0);
+
+    private void Annuleer() => MudDialog.Cancel();
+
+    private void Opslaan()
+    {
+        if (_datum == null || _tijd == null) return;
+        var geplandOp = _datum.Value.Date + _tijd.Value;
+        MudDialog.Close(DialogResult.Ok(geplandOp));
+    }
+}

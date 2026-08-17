@@ -1,0 +1,169 @@
+@page "/nieuw-wachtwoord"
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+
+<PageTitle>Nieuw Wachtwoord Instellen – TaalMaat</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+        <MudText Typo="Typo.h4" Align="Align.Center" Class="mb-2">
+            Nieuw wachtwoord instellen
+        </MudText>
+        <MudText Typo="Typo.subtitle1" Align="Align.Center" Class="mb-6 mud-text-secondary">
+            Vul uw e-mail, het resettoken en een nieuw wachtwoord in.
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(_foutmelding))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@_foutmelding</MudAlert>
+        }
+
+        @if (_succes)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4">
+                 Uw wachtwoord is succesvol gewijzigd! U kunt nu inloggen met uw nieuwe wachtwoord.
+            </MudAlert>
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Href="/login"
+                       StartIcon="@Icons.Material.Filled.Login">
+                Ga naar inloggen
+            </MudButton>
+        }
+        else
+        {
+            <MudTextField @bind-Value="_email"
+                          Label="E-mailadres"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email"
+                          AdornmentIcon="@Icons.Material.Filled.Email"
+                          Adornment="Adornment.Start"
+                          Class="mb-4"
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="_token"
+                          Label="Resettoken"
+                          Variant="Variant.Outlined"
+                          Lines="3"
+                          Class="mb-4"
+                          HelperText="Plak hier het token dat u hebt ontvangen"
+                          Immediate="true"
+                          Style="font-family: monospace; font-size: 0.85rem;" />
+
+            <MudTextField @bind-Value="_nieuwWachtwoord"
+                          Label="Nieuw wachtwoord"
+                          Variant="Variant.Outlined"
+                          InputType="@(_wachtwoordZichtbaar? InputType.Text: InputType.Password)"
+                          AdornmentIcon="@(_wachtwoordZichtbaar? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                          Adornment="Adornment.End"
+                          OnAdornmentClick="() => _wachtwoordZichtbaar = !_wachtwoordZichtbaar"
+                          Class="mb-4"
+                          HelperText="Min. 8 tekens, hoofdletter en cijfer vereist"
+                          Immediate="true" />
+
+            <MudTextField @bind-Value="_wachtwoordBevestiging"
+                          Label="Wachtwoord bevestigen"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password"
+                          Class="mb-6"
+                          Immediate="true" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="_bezig"
+                       OnClick="WachtwoordResetten">
+                @if (_bezig)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Wachtwoord opslaan
+            </MudButton>
+        }
+
+        <MudDivider Class="my-4" />
+        <MudText Align="Align.Center">
+            <MudLink Href="/wachtwoord-vergeten">← Nieuw token aanvragen</MudLink>
+            &nbsp;|&nbsp;
+            <MudLink Href="/login">Inloggen</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private string _email = string.Empty;
+    private string _token = string.Empty;
+    private string _nieuwWachtwoord = string.Empty;
+    private string _wachtwoordBevestiging = string.Empty;
+    private string _foutmelding = string.Empty;
+    private bool _bezig = false;
+    private bool _succes = false;
+    private bool _wachtwoordZichtbaar = false;
+
+    private async Task WachtwoordResetten()
+    {
+        _bezig = true;
+        _foutmelding = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            // Validatie
+            if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_token) || string.IsNullOrWhiteSpace(_nieuwWachtwoord))
+            {
+                _foutmelding = "Vul alstublieft alle velden in.";
+                _bezig = false;
+                return;
+            }
+
+            if (_nieuwWachtwoord != _wachtwoordBevestiging)
+            {
+                _foutmelding = "Wachtwoorden komen niet overeen.";
+                _bezig = false;
+                return;
+            }
+
+            if (_nieuwWachtwoord.Length < 8)
+            {
+                _foutmelding = "Het wachtwoord moet minimaal 8 tekens bevatten.";
+                _bezig = false;
+                return;
+            }
+
+            // Gebruiker zoeken
+            var gebruiker = await UserManager.FindByEmailAsync(_email);
+            if (gebruiker == null)
+            {
+                _foutmelding = "Er is geen account gevonden met dit e-mailadres.";
+                _bezig = false;
+                return;
+            }
+
+            // Wachtwoord resetten met token
+            var resultaat = await UserManager.ResetPasswordAsync(gebruiker, _token.Trim(), _nieuwWachtwoord);
+
+            if (resultaat.Succeeded)
+            {
+                _succes = true;
+                Snackbar.Add(" Wachtwoord succesvol gewijzigd!", Severity.Success);
+            }
+            else
+            {
+                _foutmelding = "Fout bij het resetten: " + string.Join(" ", resultaat.Errors.Select(e => e.Description));
+            }
+        }
+        catch (Exception ex)
+        {
+            _foutmelding = $"Er is een fout opgetreden: {ex.Message}";
+        }
+        finally
+        {
+            _bezig = false;
+            StateHasChanged();
+        }
+    }
+}

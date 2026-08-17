@@ -1,0 +1,194 @@
+@page "/login"
+@using Microsoft.AspNetCore.Authentication
+@using Microsoft.AspNetCore.Identity
+@inject SignInManager<ApplicationUser> SignInManager
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject ILogger<Login> Logger
+@inject AuthenticationStateProvider AuthStateProvider
+@* JSRuntime toegevoegd voor het verzenden van het verborgen formulier *@
+@inject IJSRuntime JSRuntime
+
+<PageTitle>Inloggen – TaalMaat</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+
+        <div class="d-flex align-center justify-center ml-3 mb-6">
+            <MudIcon Icon="@Icons.Material.Filled.Public" Size="Size.Large" Color="Color.Inherit" Class="mr-2" />
+            <MudText Typo="Typo.h4">TaalMaat</MudText>
+        </div>
+
+        <MudText Typo="Typo.subtitle1" Align="Align.Center" Class="mb-6 mud-text-secondary">
+            Welkom terug! Log in om verder te gaan.
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(_foutmelding))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@_foutmelding</MudAlert>
+        }
+
+        <MudTextField @bind-Value="_email"
+                      Label="E-mailadres"
+                      Variant="Variant.Outlined"
+                      InputType="InputType.Email"
+                      AdornmentIcon="@Icons.Material.Filled.Email"
+                      Adornment="Adornment.Start"
+                      Class="mb-4"
+                      Immediate="true"
+                      UserAttributes="@(new Dictionary<string, object> {
+                                                { "autocomplete", "off" },
+                                                { "readonly", "readonly" },
+                                                { "onfocus", "this.removeAttribute('readonly');" }
+                                            })" />
+
+        <MudTextField @bind-Value="_wachtwoord"
+                      Label="Wachtwoord"
+                      Variant="Variant.Outlined"
+                      InputType="@(_wachtwoordZichtbaar? InputType.Text: InputType.Password)"
+                      AdornmentIcon="@(_wachtwoordZichtbaar? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                      Adornment="Adornment.End"
+                      OnAdornmentClick="() => _wachtwoordZichtbaar = !_wachtwoordZichtbaar"
+                      Class="mb-6"
+                      Immediate="true"
+                      UserAttributes="@(new Dictionary<string, object> {
+                                                { "autocomplete", "new-password" },
+                                                { "readonly", "readonly" },
+                                                { "onfocus", "this.removeAttribute('readonly');" }
+                                            })" />
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   FullWidth="true"
+                   Size="Size.Large"
+                   Disabled="_bezig"
+                   OnClick="HandleLogin">
+            @if (_bezig)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Inloggen
+        </MudButton>
+
+        <MudDivider Class="my-4" />
+        <MudText Align="Align.Center" Class="mb-2">
+            <MudLink Href="/wachtwoord-vergeten">Wachtwoord vergeten?</MudLink>
+        </MudText>
+        <MudText Align="Align.Center">
+            Nog geen account?
+            <MudLink Href="/register">Registreer hier</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@if (_inloggenGelukt)
+{
+    @* Verborgen formulier om een veilige POST-aanvraag uit te voeren zonder URL-parameters *@
+    <form id="secureLoginForm" method="post" action="/Account/PerformLogin" style="display:none;">
+        <input type="hidden" name="email" value="@_email" />
+        <input type="hidden" name="code" value="@_wachtwoord" />
+    </form>
+}
+
+@code {
+    private string _email = string.Empty;
+    private string _wachtwoord = string.Empty;
+    private string _foutmelding = string.Empty;
+    private bool _bezig = false;
+    private bool _wachtwoordZichtbaar = false;
+
+    @* Status om het POST formulier te activeren *@
+    private bool _inloggenGelukt = false;
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                if (authState.User.Identity?.IsAuthenticated == true)
+                {
+                    Navigation.NavigateTo("/", forceLoad: true);
+                }
+            }
+            catch (Exception ex)
+            {
+                Logger.LogWarning(ex, "Auth state check failed during login page load");
+            }
+        }
+
+        @* Voer JavaScript uit zodra het formulier in de DOM zit *@
+        if (_inloggenGelukt)
+        {
+            _inloggenGelukt = false;
+            await JSRuntime.InvokeVoidAsync("eval", "document.getElementById('secureLoginForm').submit();");
+        }
+    }
+
+    private async Task HandleLogin()
+    {
+        _bezig = true;
+        _foutmelding = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_wachtwoord))
+            {
+                _foutmelding = "Vul alstublieft uw e-mailadres en wachtwoord in.";
+                _bezig = false;
+                return;
+            }
+
+            Logger.LogInformation("Login poging voor: {Email}", _email);
+
+            var gebruiker = await UserManager.FindByEmailAsync(_email);
+            if (gebruiker == null)
+            {
+                _foutmelding = "Ongeldig e-mailadres of wachtwoord.";
+                _bezig = false;
+                return;
+            }
+
+            if (!gebruiker.IsActief)
+            {
+                _foutmelding = "Uw account is geblokkeerd. Neem contact op met de beheerder.";
+                _bezig = false;
+                return;
+            }
+
+            var resultaat = await SignInManager.CheckPasswordSignInAsync(gebruiker, _wachtwoord, lockoutOnFailure: true);
+
+            if (resultaat.Succeeded)
+            {
+                Logger.LogInformation("Wachtwoord OK voor {Email}, formulier klaarmaken voor veilige POST...", _email);
+
+                @* Maak het verborgen formulier zichtbaar voor de DOM en trigger OnAfterRenderAsync *@
+                _inloggenGelukt = true;
+            }
+            else if (resultaat.IsLockedOut)
+            {
+                _foutmelding = "Account tijdelijk geblokkeerd wegens te veel mislukte pogingen.";
+            }
+            else if (resultaat.IsNotAllowed)
+            {
+                _foutmelding = "Inloggen niet toegestaan.";
+            }
+            else
+            {
+                _foutmelding = "Ongeldig e-mailadres of wachtwoord.";
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Fout bij inloggen");
+            _foutmelding = $"Er is een fout opgetreden: {ex.Message}";
+        }
+        finally
+        {
+            _bezig = false;
+            StateHasChanged();
+        }
+    }
+}

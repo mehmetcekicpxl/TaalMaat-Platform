@@ -1,0 +1,219 @@
+@page "/wachtwoord-vergeten"
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+@inject ISnackbar Snackbar
+@inject IJSRuntime JS
+
+<PageTitle>Wachtwoord Vergeten – TaalMaat</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8">
+        <MudText Typo="Typo.h4" Align="Align.Center" Class="mb-2">
+            Wachtwoord vergeten
+        </MudText>
+        <MudText Typo="Typo.subtitle1" Align="Align.Center" Class="mb-6 mud-text-secondary">
+            Voer uw e-mailadres in om een resettoken te ontvangen.
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(_foutmelding))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@_foutmelding</MudAlert>
+        }
+
+        @if (_stap == 1)
+        {
+            <MudTextField @bind-Value="_email"
+                          Label="E-mailadres"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Email"
+                          AdornmentIcon="@Icons.Material.Filled.Email"
+                          Adornment="Adornment.Start"
+                          Class="mb-6"
+                          Immediate="true" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="_bezig"
+                       OnClick="ControleerEmail">
+                @if (_bezig)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Volgende
+            </MudButton>
+        }
+        else if (_stap == 2)
+        {
+            <MudTextField @bind-Value="_geheimWoord"
+                          Label="Uw geheim woord"
+                          Variant="Variant.Outlined"
+                          InputType="InputType.Password"
+                          AdornmentIcon="@Icons.Material.Filled.Lock"
+                          Adornment="Adornment.Start"
+                          Class="mb-4"
+                          HelperText="Dit heeft u ingesteld bij uw registratie."
+                          Immediate="true" />
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Disabled="_bezig"
+                       OnClick="VraagTokenAan">
+                @if (_bezig)
+                {
+                    <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                }
+                Verifieer en genereer token
+            </MudButton>
+        }
+        else if (_stap == 3)
+        {
+            <MudAlert Severity="Severity.Success" Class="mb-4">
+                <MudText Typo="Typo.body1">
+                     Er is een resettoken gegenereerd voor uw account.
+                </MudText>
+            </MudAlert>
+
+            <MudAlert Severity="Severity.Info" Class="mb-4" Variant="Variant.Outlined">
+                <MudText Typo="Typo.caption" Class="mb-1">
+                    Kopieer onderstaand token :
+                </MudText>
+                <MudTextField Value="@_resetToken"
+                              ReadOnly="true"
+                              Variant="Variant.Filled"
+                              Adornment="Adornment.End"
+                              AdornmentIcon="@Icons.Material.Filled.ContentCopy"
+                              OnAdornmentClick="KopieerToken"
+                              Class="mt-2"
+                              Style="font-family: monospace; font-size: 0.8rem;" />
+            </MudAlert>
+
+            <MudButton Variant="Variant.Filled"
+                       Color="Color.Primary"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Href="/nieuw-wachtwoord"
+                       StartIcon="@Icons.Material.Filled.ArrowForward">
+                Ga naar nieuw wachtwoord instellen
+            </MudButton>
+        }
+
+        <MudDivider Class="my-4" />
+        <MudText Align="Align.Center">
+            <MudLink Href="/login">← Terug naar inloggen</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private int _stap = 1;
+    private string _email = string.Empty;
+    private string _geheimWoord = string.Empty;
+    private string _foutmelding = string.Empty;
+    private string _resetToken = string.Empty;
+    private bool _bezig = false;
+    private ApplicationUser? _gebruiker;
+
+    private async Task ControleerEmail()
+    {
+        _bezig = true;
+        _foutmelding = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_email))
+            {
+                _foutmelding = "Vul alstublieft uw e-mailadres in.";
+                _bezig = false;
+                return;
+            }
+
+            _gebruiker = await UserManager.FindByEmailAsync(_email);
+            if (_gebruiker == null)
+            {
+                _foutmelding = "Er is geen account gevonden met dit e-mailadres.";
+                _bezig = false;
+                return;
+            }
+
+            _stap = 2; // Ga naar geheim woord stap
+        }
+        catch (Exception ex)
+        {
+            _foutmelding = $"Er is een fout opgetreden: {ex.Message}";
+        }
+        finally
+        {
+            _bezig = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task VraagTokenAan()
+    {
+        _bezig = true;
+        _foutmelding = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_geheimWoord))
+            {
+                _foutmelding = "Vul alstublieft uw geheim woord in.";
+                _bezig = false;
+                return;
+            }
+
+            if (_gebruiker == null) return;
+
+            // Controleer geheim woord via PasswordHasher
+            if (string.IsNullOrEmpty(_gebruiker.GeheimWoord))
+            {
+                _foutmelding = "Het geheim woord klopt niet.";
+                _bezig = false;
+                return;
+            }
+
+            var passwordHasher = new PasswordHasher<ApplicationUser>();
+            var verificationResult = passwordHasher.VerifyHashedPassword(_gebruiker, _gebruiker.GeheimWoord, _geheimWoord);
+
+            if (verificationResult == PasswordVerificationResult.Failed)
+            {
+                _foutmelding = "Het geheim woord klopt niet.";
+                _bezig = false;
+                return;
+            }
+
+            // Token genereren
+            _resetToken = await UserManager.GeneratePasswordResetTokenAsync(_gebruiker);
+            _stap = 3;
+            Snackbar.Add("Resettoken succesvol gegenereerd!", Severity.Success);
+        }
+        catch (Exception ex)
+        {
+            _foutmelding = $"Er is een fout opgetreden: {ex.Message}";
+        }
+        finally
+        {
+            _bezig = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task KopieerToken()
+    {
+        try
+        {
+            await JS.InvokeVoidAsync("navigator.clipboard.writeText", _resetToken);
+            Snackbar.Add(" Token gekopieerd naar klembord!", Severity.Success);
+        }
+        catch
+        {
+            Snackbar.Add("Kopiëren mislukt – selecteer het token handmatig (Ctrl+C)", Severity.Warning);
+        }
+    }
+}

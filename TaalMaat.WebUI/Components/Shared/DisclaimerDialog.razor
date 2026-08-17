@@ -1,0 +1,49 @@
+<!-- DisclaimerDialog: getoond bij het verzenden of aanvaarden van een buddyverzoek -->
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6" Color="Color.Warning">
+            Belangrijke mededeling
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText Typo="Typo.body1">
+                <strong>Wees altijd respectvol en beleefd.</strong>
+            </MudText>
+        </MudAlert>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            U bent zelf verantwoordelijk voor hoe u praat met andere gebruikers op het platform.
+        </MudText>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            Slecht gedrag — zoals pesten, discriminatie of misbruik — kan gemeld worden. Dit kan leiden tot een <strong>tijdelijke of definitieve blokkering van uw account</strong>.
+        </MudText>
+        <MudAlert Severity="Severity.Info" Class="mb-4">
+            <MudText Typo="Typo.body2">
+                <strong>Let op:</strong> Videogesprekken gebeuren via een externe dienst en worden <strong>nooit opgenomen</strong>. Wij hebben geen bewijs van wat daar gebeurt.
+                <br /><br />
+                Uw getypte chatberichten op dit platform zijn wel beveiligd opgeslagen. Alleen als iemand een klacht indient, kan de beheerder deze chatberichten lezen om het probleem op te lossen.
+            </MudText>
+        </MudAlert>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            Door op "Ik begrijp het en ga akkoord" te klikken, bevestigt u dat u deze regels begrijpt.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Annuleer" Variant="Variant.Outlined" Color="Color.Default">Annuleren</MudButton>
+        <MudButton OnClick="Akkoord" Variant="Variant.Filled" Color="Color.Warning">
+            Ik begrijp het en ga akkoord
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    // Parameter om de dialoog te beheren vanuit het bovenliggende component
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    // Functie om de dialoog te annuleren
+    private void Annuleer() => MudDialog.Cancel();
+
+    // Functie om succesvol akkoord te gaan met de voorwaarden
+    private void Akkoord() => MudDialog.Close(DialogResult.Ok(true));
+}

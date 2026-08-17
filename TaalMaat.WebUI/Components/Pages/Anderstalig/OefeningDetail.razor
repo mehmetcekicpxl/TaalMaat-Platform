@@ -1,0 +1,134 @@
+@page "/student/oefening/{Id:int}"
+@attribute [Authorize(Roles = "Anderstalig")]
+@inject OefeningService OefeningService
+@inject NavigationManager Navigation
+
+<PageTitle>Oefening – TaalMaat</PageTitle>
+
+@if (_oefening == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else
+{
+    <MudText Typo="Typo.h4" Class="mb-2">@_oefening.Titel</MudText>
+    <MudChip T="string" Color="Color.Info" Size="Size.Small" Class="mb-6">Niveau: @_oefening.Niveau</MudChip>
+
+    <!-- Leestekst of YouTube-video -->
+    @if (!string.IsNullOrEmpty(_oefening.YouTubeUrl))
+    {
+        <MudPaper Elevation="3" Class="pa-4 mb-6">
+            <MudText Typo="Typo.h6" Class="mb-3">🎬 Kijk en luister</MudText>
+            <!-- YouTube embed iframe-->
+            <div style="position:relative; padding-bottom:56.25%; height:0; overflow:hidden;">
+                <iframe src="@_oefening.YouTubeUrl"
+                        style="position:absolute; top:0; left:0; width:100%; height:100%; border:0;"
+                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                        allowfullscreen></iframe>
+            </div>
+        </MudPaper>
+    }
+    @if (!string.IsNullOrEmpty(_oefening.AudioUrl))
+    {
+        <MudPaper Elevation="3" Class="pa-4 mb-6">
+            <MudText Typo="Typo.h6" Class="mb-3">🎧 Luister</MudText>
+            <audio controls style="width:100%; border-radius:8px;">
+                <source src="@_oefening.AudioUrl" type="audio/mpeg">
+                Uw browser ondersteunt het audio-element niet.
+            </audio>
+        </MudPaper>
+    }
+    @if (!string.IsNullOrEmpty(_oefening.Inhoud))
+    {
+        <MudPaper Elevation="3" Class="pa-6 mb-6">
+            <MudText Typo="Typo.h6" Class="mb-3">📄 Leestekst</MudText>
+            <MudText Typo="Typo.body1" Style="white-space: pre-wrap;">@_oefening.Inhoud</MudText>
+        </MudPaper>
+    }
+
+    <!-- Meerkeuzevragen -->
+    @if (_oefening.Vragen.Any())
+    {
+        <MudText Typo="Typo.h5" Class="mb-4">❓ Vragen</MudText>
+
+        @for (int i = 0; i < _oefening.Vragen.Count; i++)
+        {
+            var vraag = _oefening.Vragen.ElementAt(i);
+            var index = i;
+            var opties = System.Text.Json.JsonSerializer.Deserialize<List<string>>(vraag.OptiesJson) ?? new();
+
+            <MudPaper Elevation="2" Class="pa-4 mb-4">
+                <MudText Typo="Typo.subtitle1" Class="mb-3">
+                    @(index + 1). @vraag.VraagTekst
+                </MudText>
+                <MudRadioGroup @bind-Value="_antwoorden[index]" T="string">
+                    @foreach (var optie in opties)
+                    {
+                        <MudRadio T="string" Value="@optie" Color="Color.Primary" Class="mb-1">@optie</MudRadio>
+                    }
+                </MudRadioGroup>
+
+                @if (_gecontroleerd && !string.IsNullOrEmpty(_antwoorden[index]))
+                {
+                    @if (_antwoorden[index] == vraag.JuistAntwoord)
+                    {
+                        <MudAlert Severity="Severity.Success" Dense="true" Class="mt-2">✅ Juist!</MudAlert>
+                    }
+                    else
+                    {
+                        <MudAlert Severity="Severity.Error" Dense="true" Class="mt-2">
+                            ❌ Fout. Het juiste antwoord is: <strong>@vraag.JuistAntwoord</strong>
+                        </MudAlert>
+                    }
+                }
+            </MudPaper>
+        }
+
+        @if (!_gecontroleerd)
+        {
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large"
+                       OnClick="ControleerAntwoorden" StartIcon="@Icons.Material.Filled.CheckCircle">
+                Controleer mijn antwoorden
+            </MudButton>
+        }
+        else
+        {
+            <MudAlert Severity="Severity.Info" Class="mt-4">
+                U heeft @_juisteAntwoorden van de @_oefening.Vragen.Count vragen juist!
+            </MudAlert>
+            <MudButton Variant="Variant.Outlined" OnClick="TerugNaarZelfstudie" Class="mt-4">
+                Terug naar niveaukeuze
+            </MudButton>
+        }
+    }
+}
+
+@code {
+    [Parameter] public int Id { get; set; }
+
+    private Oefening? _oefening;
+    private string[] _antwoorden = Array.Empty<string>();
+    private bool _gecontroleerd = false;
+    private int _juisteAntwoorden = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        _oefening = await OefeningService.GetByIdAsync(Id);
+        if (_oefening != null)
+            _antwoorden = new string[_oefening.Vragen.Count];
+    }
+
+    private void ControleerAntwoorden()
+    {
+        if (_oefening == null) return;
+        _gecontroleerd = true;
+        _juisteAntwoorden = 0;
+        for (int i = 0; i < _oefening.Vragen.Count; i++)
+        {
+            if (_antwoorden[i] == _oefening.Vragen.ElementAt(i).JuistAntwoord)
+                _juisteAntwoorden++;
+        }
+    }
+
+    private void TerugNaarZelfstudie() => Navigation.NavigateTo("/student/zelfstudie");
+}

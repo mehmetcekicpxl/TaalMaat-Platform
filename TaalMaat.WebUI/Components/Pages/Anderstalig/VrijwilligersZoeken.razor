@@ -1,0 +1,175 @@
+@page "/student/zoeken"
+@attribute [Authorize(Roles = "Anderstalig")]
+@inject GebruikerService GebruikerService
+@inject BuddyService BuddyService
+@inject IBeschikbaarheidRepository BeschikbaarheidRepo
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Zoek een Vrijwilliger – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-6">Beschikbare vrijwilligers</MudText>
+
+@if (_vrijwilligers == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!_vrijwilligers.Any())
+{
+    <MudAlert Severity="Severity.Info">
+        Er zijn momenteel geen beschikbare vrijwilligers. Probeer het later opnieuw.
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var vw in _vrijwilligers)
+        {
+            <MudItem xs="12" sm="6" md="4" Class="d-flex">
+
+                <MudCard Elevation="4" Class="d-flex flex-column flex-grow-1" Style="width: 100%;">
+                    <MudCardHeader>
+                        <CardHeaderAvatar>
+                            <MudAvatar Color="Color.Primary" Size="Size.Large">
+                                @(vw.UserName?[0].ToString().ToUpper() ?? "V")
+                            </MudAvatar>
+                        </CardHeaderAvatar>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.h6">@(vw.VolledigeNaam)</MudText>
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                                Lid sinds @vw.AangemaaktOp.ToString("MMMM yyyy")
+                            </MudText>
+                        </CardHeaderContent>
+                    </MudCardHeader>
+
+                    <MudCardContent Class="flex-grow-1">
+                        @if (!string.IsNullOrEmpty(vw.ShortBio))
+                        {
+                            <MudText Typo="Typo.body2" Class="mb-3">@vw.ShortBio</MudText>
+                        }
+                        @if (!string.IsNullOrEmpty(vw.Hobbies))
+                        {
+                            <MudChipSet T="string">
+                                @foreach (var hobby in vw.Hobbies.Split(','))
+                                {
+                                    <MudChip T="string" Color="Color.Success" Size="Size.Small">
+                                        @hobby.Trim()
+                                    </MudChip>
+                                }
+                            </MudChipSet>
+                        }
+
+                        @if (vw.Beschikbaarheden != null && vw.Beschikbaarheden.Any())
+                        {
+                            <MudDivider Class="my-3" />
+                            <MudText Typo="Typo.subtitle2" Class="mb-1">Beschikbaarheid:</MudText>
+                            <MudList T="string" Dense="true" ReadOnly="true">
+                                @foreach (var b in vw.Beschikbaarheden.OrderBy(x => (int)x.DagVanDeWeek == 0 ? 7 : (int)x.DagVanDeWeek).ThenBy(x => x.StartTijd))
+                                {
+                                    <MudListItem Dense="true">
+                                        <MudIcon Icon="@Icons.Material.Filled.AccessTime" Size="Size.Small" Class="mr-2" />
+                                        @VertaalDag(b.DagVanDeWeek): @b.StartTijd.ToString("HH:mm") - @b.EindTijd.ToString("HH:mm")
+                                    </MudListItem>
+                                }
+                            </MudList>
+                        }
+                        else
+                        {
+                            <MudDivider Class="my-3" />
+                            <MudText Typo="Typo.body2" Color="Color.Error">Nog geen tijden opgegeven</MudText>
+                        }
+                    </MudCardContent>
+
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Filled" Color="Color.Primary"
+                                   Disabled="@(_verzendenId == vw.Id)"
+                                   OnClick="() => StuurVerzoek(vw)"
+                                   StartIcon="@Icons.Material.Filled.PersonAdd">
+                            @if (_verzendenId == vw.Id)
+                            {
+                                <MudProgressCircular Class="ms-n1" Size="Size.Small" Indeterminate="true" />
+                                <span class="ms-2">Verzenden...</span>
+                            }
+                            else
+                            {
+                                <span>Buddyverzoek sturen</span>
+                            }
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private List<ApplicationUser>? _vrijwilligers;
+    private string? _userId;
+    private ApplicationUser? _huidigGebruiker;
+    private string? _verzendenId;
+
+    private readonly Dictionary<DayOfWeek, string> _dagNamen = new()
+    {
+        [DayOfWeek.Monday] = "Maandag",
+        [DayOfWeek.Tuesday] = "Dinsdag",
+        [DayOfWeek.Wednesday] = "Woensdag",
+        [DayOfWeek.Thursday] = "Donderdag",
+        [DayOfWeek.Friday] = "Vrijdag",
+        [DayOfWeek.Saturday] = "Zaterdag",
+        [DayOfWeek.Sunday] = "Zondag",
+    };
+
+    private string VertaalDag(DayOfWeek dag) => _dagNamen.TryGetValue(dag, out var naam) ? naam : dag.ToString();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (_userId != null)
+            _huidigGebruiker = await GebruikerService.GetByIdAsync(_userId);
+
+        // Haal bestaande connecties op, zodat we die niet meer tonen in de zoeklijst
+        var bestaandeKoppelingen = await BuddyService.GetActieveBuddiesVanAnderstalig(_userId ?? "");
+        var actieveBuddyIds = bestaandeKoppelingen.Select(k => k.VrijwilligerId).ToList();
+
+        // Haal goedgekeurde vrijwilligers op die nog zichtbaar zijn (< 3 actieve buddies)
+        var alleVrijwilligers = await GebruikerService.GetByRolAsync(GebruikerRol.Vrijwilliger);
+        var resultaat = new List<ApplicationUser>();
+        foreach (var vw in alleVrijwilligers.Where(v => v.IsGeaccepteerd && v.IsActief && !actieveBuddyIds.Contains(v.Id) && v.GemeenteId == _huidigGebruiker?.GemeenteId))
+        {
+            // KRITIEKE BEDRIJFSREGEL: alleen tonen als < 3 actieve buddies
+            if (await BuddyService.IsZichtbaarInLijstAsync(vw.Id))
+                resultaat.Add(vw);
+        }
+        _vrijwilligers = resultaat;
+    }
+
+    private async Task StuurVerzoek(ApplicationUser vrijwilliger)
+    {
+        if (_userId == null || _huidigGebruiker == null) return;
+
+        // Toon disclaimer voor het verzenden
+        var dlgResult = await DialogService.ShowAsync<DisclaimerDialog>("Informatie");
+        var result = await dlgResult.Result;
+        if (result?.Canceled == true) return;
+
+        try
+        {
+            _verzendenId = vrijwilliger.Id;
+            var (succes, bericht) = await BuddyService.StuurVerzoekAsync(_userId, vrijwilliger.Id, _huidigGebruiker);
+            Snackbar.Add(bericht, succes ? Severity.Success : Severity.Warning);
+
+            if (succes)
+            {
+                // Haal hem meteen uit de lijst om een 2e klik te voorkomen
+                _vrijwilligers?.Remove(vrijwilliger);
+            }
+        }
+        finally
+        {
+            _verzendenId = null;
+        }
+    }
+}

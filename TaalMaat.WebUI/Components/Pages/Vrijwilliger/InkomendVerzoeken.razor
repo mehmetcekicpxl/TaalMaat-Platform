@@ -1,0 +1,100 @@
+@page "/volunteer/verzoeken"
+@attribute [Authorize(Roles = "Vrijwilliger")]
+@inject BuddyService BuddyService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Inkomende Verzoeken – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-6">Inkomende buddyverzoeken</MudText>
+
+@if (_verzoeken == null)
+{
+    <MudProgressLinear Indeterminate="true" />
+}
+else if (!_verzoeken.Any(v => v.Status == BuddyStatus.Wachtend))
+{
+    <MudAlert Severity="Severity.Info">Er zijn momenteel geen openstaande verzoeken.</MudAlert>
+}
+else
+{
+    @foreach (var verzoek in _verzoeken.Where(v => v.Status == BuddyStatus.Wachtend))
+    {
+        <MudCard Class="mb-4" Elevation="3">
+            <MudCardHeader>
+                <CardHeaderAvatar>
+                    <MudAvatar Color="Color.Secondary">@verzoek.Verzender.Voornaam?[0]</MudAvatar>
+                </CardHeaderAvatar>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Nieuw verzoek</MudText>
+                    <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                        @verzoek.AangemaaktOp.ToString("dd MMMM yyyy")
+                    </MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <!-- Hobbies en ShortBio van de Anderstalige tonen -->
+                @if (!string.IsNullOrEmpty(verzoek.Verzender.Hobbies))
+                {
+                    <MudChipSet T="string" Class="mb-2">
+                        @foreach (var hobby in verzoek.Verzender.Hobbies.Split(','))
+                        {
+                            <MudChip T="string" Color="Color.Primary" Size="Size.Small">@hobby.Trim()</MudChip>
+                        }
+                    </MudChipSet>
+                }
+                @if (!string.IsNullOrEmpty(verzoek.Verzender.ShortBio))
+                {
+                    <MudText Typo="Typo.body2" Class="mt-2">
+                        <em>@verzoek.Verzender.ShortBio</em>
+                    </MudText>
+                }
+            </MudCardContent>
+            <MudCardActions>
+                <MudButton Variant="Variant.Filled" Color="Color.Success"
+                           OnClick="() => AccepteerVerzoek(verzoek.Id)">
+                    ✅ Aanvaarden
+                </MudButton>
+                <MudButton Variant="Variant.Outlined" Color="Color.Error"
+                           OnClick="() => WijsAf(verzoek.Id)" Class="ml-2">
+                    ❌ Afwijzen
+                </MudButton>
+            </MudCardActions>
+        </MudCard>
+    }
+}
+
+@code {
+    private List<BuddyVerzoek>? _verzoeken;
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (_userId != null)
+            _verzoeken = (await BuddyService.GetInkomendeVerzoek(_userId)).ToList();
+    }
+
+    private async Task AccepteerVerzoek(int verzoekId)
+    {
+		// Toon disclaimer eerst om te bevestigen dat ze akkoord gaan met de voorwaarden van buddy worden
+        var dlgResult = await DialogService.ShowAsync<DisclaimerDialog>("Informatie");
+        var result = await dlgResult.Result;
+        if (result?.Canceled == true) return;
+
+        var (succes, bericht) = await BuddyService.AccepteerVerzoekAsync(verzoekId);
+        Snackbar.Add(bericht, succes ? Severity.Success : Severity.Error);
+        if (_userId != null)
+            _verzoeken = (await BuddyService.GetInkomendeVerzoek(_userId)).ToList();
+    }
+
+    private async Task WijsAf(int verzoekId)
+    {
+        var (succes, bericht) = await BuddyService.WijsAfAsync(verzoekId);
+        Snackbar.Add(bericht, succes ? Severity.Warning : Severity.Error);
+        if (_userId != null)
+            _verzoeken = (await BuddyService.GetInkomendeVerzoek(_userId)).ToList();
+    }
+}

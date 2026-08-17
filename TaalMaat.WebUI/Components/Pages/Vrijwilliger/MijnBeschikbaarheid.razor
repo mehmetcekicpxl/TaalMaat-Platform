@@ -1,0 +1,111 @@
+@page "/volunteer/beschikbaarheid"
+@attribute [Authorize(Roles = "Vrijwilliger")]
+@inject IBeschikbaarheidRepository BeschikbaarheidRepo
+@inject AuthenticationStateProvider AuthStateProvider
+@inject ISnackbar Snackbar
+
+<PageTitle>Mijn Beschikbaarheid – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-6">Mijn beschikbaarheid</MudText>
+
+<MudPaper Elevation="3" Class="pa-6 mb-4">
+    <MudText Typo="Typo.h6" Class="mb-4">Nieuwe tijdslot toevoegen</MudText>
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudSelect @bind-Value="_nieuweDag" Label="Dag" Variant="Variant.Outlined">
+                @foreach (DayOfWeek dag in Enum.GetValues(typeof(DayOfWeek)))
+                {
+                    <MudSelectItem Value="dag">@_dagNamen[dag]</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudTimePicker @bind-Time="_startTijd" Label="Van" Variant="Variant.Outlined" AmPm="false" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudTimePicker @bind-Time="_eindTijd" Label="Tot" Variant="Variant.Outlined" AmPm="false" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-end">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" OnClick="VoegToe" FullWidth="true" Style="height: 52px;" Class="mb-1">
+                Toevoegen
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+@if (_beschikbaarheden?.Any() == true)
+{
+    <MudDataGrid Items="_beschikbaarheden" Dense="true">
+        <Columns>
+            <TemplateColumn Title="Dag">
+                <CellTemplate>@_dagNamen[context.Item.DagVanDeWeek]</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Van">
+                <CellTemplate>@context.Item.StartTijd.ToString("HH:mm")</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="Tot">
+                <CellTemplate>@context.Item.EindTijd.ToString("HH:mm")</CellTemplate>
+            </TemplateColumn>
+            <TemplateColumn Title="">
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error"
+                                   OnClick="() => Verwijder(context.Item.Id)" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+else
+{
+    <MudAlert Severity="Severity.Info">Nog geen beschikbaarheidstijdsloten ingevoerd.</MudAlert>
+}
+
+@code {
+    private List<Beschikbaarheid>? _beschikbaarheden;
+    private string? _userId;
+    private DayOfWeek _nieuweDag = DayOfWeek.Monday;
+    private TimeSpan? _startTijd = new TimeSpan(9, 0, 0);
+    private TimeSpan? _eindTijd = new TimeSpan(11, 0, 0);
+
+    private readonly Dictionary<DayOfWeek, string> _dagNamen = new()
+    {
+        [DayOfWeek.Monday] = "Maandag",
+        [DayOfWeek.Tuesday] = "Dinsdag",
+        [DayOfWeek.Wednesday] = "Woensdag",
+        [DayOfWeek.Thursday] = "Donderdag",
+        [DayOfWeek.Friday] = "Vrijdag",
+        [DayOfWeek.Saturday] = "Zaterdag",
+        [DayOfWeek.Sunday] = "Zondag",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (_userId != null)
+            _beschikbaarheden = (await BeschikbaarheidRepo.GetForGebruikerAsync(_userId)).ToList();
+    }
+
+    private async Task VoegToe()
+    {
+        if (_userId == null || _startTijd == null || _eindTijd == null) return;
+        var item = new Beschikbaarheid
+        {
+            GebruikerId = _userId,
+            DagVanDeWeek = _nieuweDag,
+            StartTijd = TimeOnly.FromTimeSpan(_startTijd.Value),
+            EindTijd = TimeOnly.FromTimeSpan(_eindTijd.Value)
+        };
+        await BeschikbaarheidRepo.AddAsync(item);
+        _beschikbaarheden = (await BeschikbaarheidRepo.GetForGebruikerAsync(_userId)).ToList();
+        Snackbar.Add("Tijdslot toegevoegd!", Severity.Success);
+    }
+
+    private async Task Verwijder(int id)
+    {
+        await BeschikbaarheidRepo.DeleteAsync(id);
+        if (_userId != null)
+            _beschikbaarheden = (await BeschikbaarheidRepo.GetForGebruikerAsync(_userId)).ToList();
+        Snackbar.Add("Tijdslot verwijderd.", Severity.Warning);
+    }
+}

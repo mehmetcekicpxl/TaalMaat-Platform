@@ -1,0 +1,175 @@
+@page "/wachtkamer"
+@attribute [Authorize(Roles = "Vrijwilliger")]
+@inject UserManager<ApplicationUser> UserManager
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager Navigation
+@inject GebruikerService GebruikerService
+@inject SignInManager<ApplicationUser> SignInManager
+@implements IAsyncDisposable
+
+<PageTitle>Wachtkamer – TaalMaat</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-8">
+    <MudPaper Elevation="4" Class="pa-8 text-center">
+        @if (_laden)
+        {
+            <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+            <MudText Class="mt-4">Gegevens worden opgehaald...</MudText>
+        }
+        else if (_gebruiker != null)
+        {
+            @if (_gebruiker.IsAfgekeurd)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.Info" Color="Color.Info" Style="font-size: 4rem;" Class="mb-4" />
+                <MudText Typo="Typo.h5" Class="mb-4">Bedankt voor uw aanmelding!</MudText>
+                <MudText Typo="Typo.body1" Class="mb-6 mud-text-secondary">
+                    Wegens enorme belangstelling of omdat uw profiel momenteel niet aansluit bij onze huidige noden, 
+                    kunnen we u momenteel helaas geen match aanbieden als vrijwilliger. <br/><br/>
+                    We danken u oprecht voor uw bereidheid om anderstaligen te helpen. 
+                    Uw gegevens worden nu, conform de GDPR, automatisch verwijderd uit ons systeem.
+                </MudText>
+                
+                <MudButton Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large" OnClick="BegrepenEnVerwijderen" Disabled="_bezig">
+                    @if (_bezig) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Begrepen (Account verwijderen)
+                </MudButton>
+            }
+            else if (_gebruiker.IsGeaccepteerd)
+            {
+                <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Style="font-size: 4rem;" Class="mb-4" />
+                <MudText Typo="Typo.h5" Class="mb-4">Uw account is goedgekeurd! 🎉</MudText>
+                <MudText Typo="Typo.body1" Class="mb-6 mud-text-secondary">
+                    Bedankt voor uw geduld. U kunt nu toegang krijgen tot het Vrijwilliger Dashboard, 
+                    uw beschikbaarheid opgeven en anderstaligen helpen de taal beter te beheersen.
+                </MudText>
+
+                <MudButton Variant="Variant.Filled" Color="Color.Success" Size="Size.Large" OnClick="GaVerderNaarDashboard" Disabled="_bezig">
+                    @if (_bezig) { <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" /> }
+                    Ga verder naar Dashboard
+                </MudButton>
+            }
+            else
+            {
+                <MudIcon Icon="@Icons.Material.Filled.PendingActions" Color="Color.Warning" Style="font-size: 4rem;" Class="mb-4" />
+                <MudText Typo="Typo.h5" Class="mb-4">Uw account is in behandeling</MudText>
+                <MudText Typo="Typo.body1" Class="mb-6 mud-text-secondary">
+                    Bedankt voor uw aanmelding als Vrijwilliger bij TaalMaat! Dit is een enorm waardevol gebaar. <br/><br/>
+                    Voor de veiligheid van al onze anderstalige gebruikers, keuren wij elk profiel eerst manueel goed. 
+                    Dit proces verloopt zo snel mogelijk. <br/><br/>
+                    Zodra uw account is goedgekeurd, 
+                    verschijnt hier automatisch een knop om verder te gaan!
+                </MudText>
+
+                <MudButton Variant="Variant.Outlined" Color="Color.Default" OnClick="Uitloggen" Class="mt-4">
+                    Tijdelijk uitloggen
+                </MudButton>
+            }
+        }
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private ApplicationUser? _gebruiker;
+    private bool _laden = true;
+    private bool _bezig = false;
+    private PeriodicTimer? _timer;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LaadGebruiker();
+
+        // Polling in plaats van SignalR HTTP request (voorkomt 401 Unauthorized)
+        if (_gebruiker != null && !_gebruiker.IsGeaccepteerd && !_gebruiker.IsAfgekeurd)
+        {
+            _timer = new PeriodicTimer(TimeSpan.FromSeconds(10));
+            _ = PollStatusAsync();
+        }
+    }
+
+    private async Task PollStatusAsync()
+    {
+        try
+        {
+            while (await _timer!.WaitForNextTickAsync())
+            {
+                await LaadGebruiker();
+                await InvokeAsync(StateHasChanged);
+                
+                if (_gebruiker is null || _gebruiker.IsGeaccepteerd || _gebruiker.IsAfgekeurd)
+                {
+                    _timer.Dispose();
+                    break;
+                }
+            }
+        }
+        catch (Exception)
+        {
+            // Pagina gesloten of timer gedisposed
+        }
+    }
+
+    private async Task LaadGebruiker()
+    {
+        var wasLaden = _laden;
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        
+        if (userId != null)
+        {
+            _gebruiker = await UserManager.FindByIdAsync(userId);
+            
+            // Als alles eigenlijk al in orde is en Wachtkamer al is gezien asynchroon, skip dit:
+            if (_gebruiker != null && _gebruiker.IsGeaccepteerd && _gebruiker.HeeftWachtkamerGezien)
+            {
+                Navigation.NavigateTo("/volunteer");
+            }
+        }
+        
+        if (wasLaden)
+        {
+            _laden = false;
+        }
+    }
+
+    private async Task GaVerderNaarDashboard()
+    {
+        if (_gebruiker == null) return;
+        _bezig = true;
+        
+        // Mark account as seen wachtkamer
+        try 
+        {
+            _gebruiker.HeeftWachtkamerGezien = true;
+            await UserManager.UpdateAsync(_gebruiker);
+        }
+        catch(Exception)
+        {
+            
+        }
+        
+        Navigation.NavigateTo("/volunteer", forceLoad: true);
+    }
+
+    private async Task BegrepenEnVerwijderen()
+    {
+        if (_gebruiker == null) return;
+        _bezig = true;
+        
+        await GebruikerService.DeleteAccountAsync(_gebruiker.Id);
+        Navigation.NavigateTo("/Account/Logout", forceLoad: true);
+    }
+
+    private async Task Uitloggen()
+    {
+        Navigation.NavigateTo("/Account/Logout", forceLoad: true);
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_timer is not null)
+        {
+            _timer.Dispose();
+        }
+        await ValueTask.CompletedTask;
+    }
+}

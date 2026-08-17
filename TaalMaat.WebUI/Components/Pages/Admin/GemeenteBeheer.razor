@@ -1,0 +1,106 @@
+@page "/admin/gemeenten"
+@attribute [Authorize(Roles = "Admin")]
+@inject IServiceScopeFactory ScopeFactory
+@inject ISnackbar Snackbar
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.EntityFrameworkCore
+@using TaalMaat.Core.Entities
+
+<PageTitle>Gemeentebeheer – TaalMaat Admin</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Gemeenten beheren</MudText>
+
+<MudPaper Class="pa-4 mb-4" Elevation="3">
+    <MudText Typo="Typo.h6" Class="mb-2">Nieuwe gemeente toevoegen</MudText>
+    <MudStack Row="true" AlignItems="AlignItems.Center">
+        <MudTextField @bind-Value="_nieuweGemeenteNaam" Label="Naam gemeente" Variant="Variant.Outlined" Immediate="true" />
+        <MudButton Variant="Variant.Filled" 
+                   Color="Color.Primary" 
+                   OnClick="Toevoegen" 
+                   Disabled="string.IsNullOrWhiteSpace(_nieuweGemeenteNaam)"
+                   Style="height: 56px; min-width: 200px;"
+                   Class="ml-2">
+            Toevoegen
+        </MudButton>
+    </MudStack>
+</MudPaper>
+
+@if (_gemeenten == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudDataGrid Items="_gemeenten" Filterable="false" SortMode="SortMode.Multiple" Dense="true">
+        <Columns>
+            <PropertyColumn Property="g => g.Id" Title="ID" />
+            <PropertyColumn Property="g => g.Naam" Title="Naam gemeente" />
+            <TemplateColumn Title="Acties">
+                <CellTemplate>
+                    <MudIconButton Icon="@Icons.Material.Filled.Delete" Color="Color.Error" OnClick="@(() => Verwijder(context.Item))" Title="Verwijderen" />
+                </CellTemplate>
+            </TemplateColumn>
+        </Columns>
+    </MudDataGrid>
+}
+
+@code {
+    private List<Gemeente>? _gemeenten;
+    private string _nieuweGemeenteNaam = "";
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LaadGemeenten();
+    }
+
+    private async Task LaadGemeenten()
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TaalMaat.Infrastructure.Data.ApplicationDbContext>();
+        _gemeenten = await db.Gemeenten.ToListAsync();
+    }
+
+    private async Task Toevoegen()
+    {
+        if (string.IsNullOrWhiteSpace(_nieuweGemeenteNaam)) return;
+
+        using var scope = ScopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TaalMaat.Infrastructure.Data.ApplicationDbContext>();
+        
+        if (await db.Gemeenten.AnyAsync(g => g.Naam.ToLower() == _nieuweGemeenteNaam.ToLower()))
+        {
+            Snackbar.Add("Deze gemeente bestaat al!", Severity.Warning);
+            return;
+        }
+
+        db.Gemeenten.Add(new Gemeente { Naam = _nieuweGemeenteNaam });
+        await db.SaveChangesAsync();
+        
+        Snackbar.Add("Gemeente succesvol toegevoegd!", Severity.Success);
+        _nieuweGemeenteNaam = "";
+        await LaadGemeenten();
+    }
+
+    private async Task Verwijder(Gemeente gemeente)
+    {
+        using var scope = ScopeFactory.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<TaalMaat.Infrastructure.Data.ApplicationDbContext>();
+        
+        // Controleer of er gebruikers gekoppeld zijn
+        var heeftGebruikers = await db.Users.AnyAsync(u => u.GemeenteId == gemeente.Id);
+        if (heeftGebruikers)
+        {
+            Snackbar.Add("Kan gemeente niet verwijderen omdat er al gebruikers aan gekoppeld zijn. Het systeem is verbonden aan deze data.", Severity.Error);
+            return;
+        }
+
+        var toDelete = await db.Gemeenten.FindAsync(gemeente.Id);
+        if (toDelete != null)
+        {
+            db.Gemeenten.Remove(toDelete);
+            await db.SaveChangesAsync();
+            Snackbar.Add("Gemeente verwijderd.", Severity.Success);
+            await LaadGemeenten();
+        }
+    }
+}

@@ -1,0 +1,193 @@
+@page "/profiel"
+@attribute [Authorize]
+@inject GebruikerService GebruikerService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject NavigationManager Navigation
+@inject IPasswordHasher<ApplicationUser> PasswordHasher
+
+<PageTitle>Mijn Profiel – TaalMaat</PageTitle>
+
+@if (_gebruiker == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else
+{
+    <MudGrid>
+        <!-- Linker kolom: avatar + account-acties -->
+        <MudItem xs="12" md="4">
+            <MudPaper Elevation="4" Class="pa-6 text-center">
+                <MudAvatar Color="Color.Primary" Size="Size.Large"
+                           Style="width:96px; height:96px; font-size:2.5rem; margin: 0 auto 16px;">
+                    @(_gebruiker.Voornaam?[0].ToString().ToUpper() ?? "?")
+                </MudAvatar>
+                <MudText Typo="Typo.h6">@_gebruiker.VolledigeNaam</MudText>
+                <MudChip T="string" Color="@RolKleur(_gebruiker.Rol)" Size="Size.Small" Class="mt-2">
+                    @_gebruiker.Rol.ToString()
+                </MudChip>
+                @if (_gebruiker.Rol == GebruikerRol.Vrijwilliger)
+                {
+                    <MudChip T="string"
+                             Color="@(_gebruiker.IsGeaccepteerd ? Color.Success : Color.Warning)"
+                             Size="Size.Small" Class="mt-1">
+                        @(_gebruiker.IsGeaccepteerd ? "✅ Goedgekeurd" : "⏳ In behandeling")
+                    </MudChip>
+                }
+                <MudText Typo="Typo.caption" Class="mt-3 mud-text-secondary d-block">
+                    Lid sinds @_gebruiker.AangemaaktOp.ToString("MMMM yyyy")
+                </MudText>
+
+                <MudDivider Class="my-5" />
+
+                <!-- GDPR: Account verwijderen knop -->
+                <MudButton Variant="Variant.Outlined"
+                           Color="Color.Error"
+                           FullWidth="true"
+                           StartIcon="@Icons.Material.Filled.DeleteForever"
+                           OnClick="VraagAccountVerwijdering">
+                    Mijn account verwijderen
+                </MudButton>
+                
+            </MudPaper>
+        </MudItem>
+
+        <!-- Rechter kolom: profiel bewerken -->
+        <MudItem xs="12" md="8">
+            <MudPaper Elevation="4" Class="pa-6">
+                <MudText Typo="Typo.h5" Class="mb-6">
+                    <MudIcon Icon="@Icons.Material.Filled.Edit" Class="mr-2" />
+                    Mijn profiel bewerken
+                </MudText>
+
+                <MudTextField @bind-Value="_gebruiker.Voornaam"
+                              Label="Voornaam"
+                              Variant="Variant.Outlined"
+                              Class="mb-4" />
+
+                <MudTextField @bind-Value="_gebruiker.Achternaam"
+                              Label="Achternaam"
+                              Variant="Variant.Outlined"
+                              Class="mb-4" />
+
+                <MudTextField @bind-Value="_gebruiker.Hobbies"
+                              Label="Hobbies & interesses"
+                              Variant="Variant.Outlined"
+                              Class="mb-4"
+                              HelperText="Komma-gescheiden (bijv. lezen, fietsen, koken)"
+                              />
+
+                <MudTextField @bind-Value="_gebruiker.ShortBio"
+                              Label="Korte introductie"
+                              Variant="Variant.Outlined"
+                              Lines="4"
+                              Class="mb-4"
+                              Counter="400"
+                              MaxLength="400"
+                              HelperText="Vertel iets over uzelf – zichtbaar voor andere gebruikers" />
+
+                <MudTextField @bind-Value="_gebruiker.ContactPhoneNumber"
+                              Label="Telefoonnummer"
+                              Variant="Variant.Outlined"
+                              InputType="InputType.Telephone"
+                              UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "off" } })"
+                              Class="mb-4"
+                              HelperText="Strikt vertrouwelijk – alleen zichtbaar voor de beheerder"
+                              AdornmentIcon="@Icons.Material.Filled.Lock"
+                              Adornment="Adornment.End" />
+
+                <MudTextField @bind-Value="_nieuwGeheimWoord"
+                              Label="Nieuw Geheim Woord (laat leeg om te behouden)"
+                              Variant="Variant.Outlined"
+                              InputType="@(_toonGeheimWoord? InputType.Text: InputType.Password)"
+                              UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "new-password" } })"
+                              Class="mb-6"
+                              HelperText="Dit woord is nodig om uw wachtwoord te herstellen. Bestaande woord is veilig gehasht."
+                              AdornmentIcon="@(_toonGeheimWoord? Icons.Material.Filled.VisibilityOff : Icons.Material.Filled.Visibility)"
+                              Adornment="Adornment.End"
+                              OnAdornmentClick="() => _toonGeheimWoord = !_toonGeheimWoord" />
+
+                <MudButton Variant="Variant.Filled"
+                           Color="Color.Primary"
+                           Size="Size.Large"
+                           StartIcon="@Icons.Material.Filled.Save"
+                           OnClick="OpslaanProfiel"
+                           Disabled="_bezig">
+                    @if (_bezig)
+                    {
+                        <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+                    }
+                    Profiel Opslaan
+                </MudButton>
+            </MudPaper>
+        </MudItem>
+    </MudGrid>
+}
+
+@code {
+    private ApplicationUser? _gebruiker;
+    private bool _bezig = false;
+    private bool _toonGeheimWoord = false;
+    private string? _nieuwGeheimWoord;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        if (userId != null)
+            _gebruiker = await GebruikerService.GetByIdAsync(userId);
+    }
+
+    private async Task OpslaanProfiel()
+    {
+        if (_gebruiker == null) return;
+        _bezig = true;
+
+        if (!string.IsNullOrWhiteSpace(_nieuwGeheimWoord))
+        {
+            _gebruiker.GeheimWoord = PasswordHasher.HashPassword(_gebruiker, _nieuwGeheimWoord);
+        }
+
+        await GebruikerService.UpdateProfielAsync(_gebruiker);
+        Snackbar.Add("✅ Profiel opgeslagen!", Severity.Success);
+
+        _nieuwGeheimWoord = null;
+        _bezig = false;
+    }
+
+    private async Task VraagAccountVerwijdering()
+    {
+        // GDPR: Toon bevestigingsdialoog (apart component, MudBlazor v7 API)
+        var dlg = await DialogService.ShowAsync<BevestigVerwijderingDialog>("Account verwijderen");
+        var result = await dlg.Result;
+        if (result?.Canceled == true) return;
+
+        await AccountVerwijderen();
+    }
+
+    /// <summary>
+    /// GDPR Recht op Vergetelheid – harde verwijdering van alle persoonsgegevens
+    /// </summary>
+    private async Task AccountVerwijderen()
+    {
+        if (_gebruiker == null) return;
+        var resultaat = await GebruikerService.DeleteAccountAsync(_gebruiker.Id);
+        if (resultaat.Succeeded)
+        {
+            Navigation.NavigateTo("/Account/Logout", forceLoad: true);
+        }
+        else
+        {
+            Snackbar.Add("Fout bij verwijdering: " + string.Join(", ", resultaat.Errors.Select(e => e.Description)), Severity.Error);
+        }
+    }
+
+    private Color RolKleur(GebruikerRol rol) => rol switch
+    {
+        GebruikerRol.Admin => Color.Error,
+        GebruikerRol.Vrijwilliger => Color.Primary,
+        GebruikerRol.Anderstalig => Color.Success,
+        _ => Color.Default
+    };
+}

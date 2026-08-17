@@ -1,0 +1,295 @@
+@page "/volunteer/buddies"
+@implements IDisposable
+@attribute [Authorize(Roles = "Vrijwilliger")]
+@inject BuddyService BuddyService
+@inject SessieService SessieService
+@inject ChatService ChatService
+@inject TaalMaat.Application.Services.ChatEventService ChatEvents
+@inject JitsiService JitsiService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+@inject IConfiguration Configuration
+@inject CalendarService CalendarService
+@inject IJSRuntime JS
+
+<PageTitle>Mijn Buddies – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Mijn buddies</MudText>
+<MudText Typo="Typo.body1" Class="mb-6 mud-text-secondary">
+    U heeft momenteel <strong>@_buddies.Count / 3</strong> actieve buddies.
+</MudText>
+
+@if (!_buddies.Any())
+{
+    <MudPaper Elevation="2" Class="pa-8 text-center">
+        <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Size="Size.Large" Color="Color.Default" Style="font-size:4rem;" Class="mb-4" />
+        <MudText Typo="Typo.h6" Class="mb-2">Nog geen buddies</MudText>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary">
+            Wacht op een buddyverzoek van een anderstalige.
+        </MudText>
+    </MudPaper>
+}
+else
+{
+    @foreach (var koppeling in _buddies)
+    {
+        <MudCard Elevation="4" Class="mb-6" Style="border-left: 6px solid #1976D2;">
+            <MudCardContent>
+                <MudGrid>
+                    <MudItem xs="12" md="6">
+                        <!-- Buddy profiel info -->
+                        <MudStack Row="true" Spacing="3" Class="mb-4">
+                            <MudAvatar Color="Color.Primary" Size="Size.Large" Style="font-size:1.5rem; width:64px; height:64px;">
+                                @koppeling.Anderstalig.Voornaam?[0].ToString().ToUpper()
+                            </MudAvatar>
+                            <div>
+                                <MudText Typo="Typo.h6">@koppeling.Anderstalig.VolledigeNaam</MudText>
+                                <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                                    Verbonden sinds @koppeling.GekoppeldOp.ToString("dd MMMM yyyy")
+                                </MudText>
+                                @if (!string.IsNullOrEmpty(koppeling.Anderstalig.Hobbies))
+                                {
+                                    <MudChipSet T="string" Class="mt-2">
+                                        @foreach (var hobby in koppeling.Anderstalig.Hobbies.Split(','))
+                                        {
+                                            <MudChip T="string" Color="Color.Info" Size="Size.Small">@hobby.Trim()</MudChip>
+                                        }
+                                    </MudChipSet>
+                                }
+                                @if (!string.IsNullOrEmpty(koppeling.Anderstalig.ShortBio))
+                                {
+                                    <MudText Typo="Typo.body2" Class="mt-1 mud-text-secondary">
+                                        <em>@koppeling.Anderstalig.ShortBio</em>
+                                    </MudText>
+                                }
+                            </div>
+                        </MudStack>
+                    </MudItem>
+
+                    <MudItem xs="12" md="6">
+                        <!-- Grote knoppen voor oudere gebruikers -->
+                        <MudStack Spacing="3">
+                            <MudButton Variant="Variant.Filled"
+                                       Color="Color.Primary"
+                                       Size="Size.Large"
+                                       Style="min-height:64px; font-size:1.1rem;"
+                                       StartIcon="@Icons.Material.Filled.CalendarMonth"
+                                       FullWidth="true"
+                                       OnClick="() => PlanSessie(koppeling)">
+                                Sessie Plannen
+                            </MudButton>
+
+                            @{
+                                var aanloopMinuten = Configuration.GetValue<int>("VideoActivationLeadTimeMinutes", 10);
+                                var volgendeSessie = _sessies.FirstOrDefault(s =>
+                                s.AnderstaligId == koppeling.AnderstaligId && s.GeplandOp >= DateTime.UtcNow);
+                                var videoActief = volgendeSessie != null && JitsiService.IsVideoButtonActief(volgendeSessie.GeplandOp, aanloopMinuten);
+                            }
+
+                            @if (volgendeSessie != null)
+                            {
+                                <MudButton Variant="Variant.Filled"
+                                           Color="@(videoActief ? Color.Success : Color.Default)"
+                                           Size="Size.Large"
+                                           Style="min-height:64px; font-size:1.1rem;"
+                                           StartIcon="@Icons.Material.Filled.VideoCall"
+                                           FullWidth="true"
+                                           Disabled="@(!videoActief)"
+                                           Href="@(videoActief ? volgendeSessie.JitsiUrl : "#")"
+                                           Target="_blank">
+                                    @if (videoActief)
+                                    {
+                                        <span>Deelnemen aan Video</span>
+                                    }
+                                    else
+                                    {
+                                        <span>Video (@volgendeSessie.GeplandOp.ToLocalTime().ToString("dd/MM HH:mm"))</span>
+                                    }
+                                </MudButton>
+
+                                <!-- Kalender download -->
+                                <MudButton Variant="Variant.Outlined"
+                                           Color="Color.Primary"
+                                           Size="Size.Large"
+                                           Style="min-height:56px; font-size:1rem;"
+                                           StartIcon="@Icons.Material.Filled.CalendarMonth"
+                                           FullWidth="true"
+                                           OnClick="() => DownloadKalender(volgendeSessie)">
+                                    Toevoegen aan Agenda
+                                </MudButton>
+                            }
+
+                            <MudButton Variant="Variant.Outlined"
+                                       Color="Color.Error"
+                                       Size="Size.Large"
+                                       Style="min-height:56px; font-size:1rem;"
+                                       StartIcon="@Icons.Material.Filled.PersonRemove"
+                                       FullWidth="true"
+                                       OnClick="() => OntkoppelBuddy(koppeling)">
+                                Verbinding Verbreken
+                            </MudButton>
+                            <MudBadge Content="@_ongelezenBerichten.GetValueOrDefault(koppeling.AnderstaligId)"
+                                      Color="Color.Error"
+                                      Overlap="true"
+                                      Visible="@(_ongelezenBerichten.GetValueOrDefault(koppeling.AnderstaligId) > 0)"
+                                      Class="w-100">
+                                <MudButton Variant="Variant.Filled"
+                                           Color="Color.Info"
+                                           Size="Size.Large"
+                                           Class="mt-3"
+                                           Style="min-height:56px; font-size:1.1rem;"
+                                           StartIcon="@Icons.Material.Filled.Chat"
+                                           FullWidth="true"
+                                           OnClick="() => OpenChat(koppeling.Anderstalig)">
+                                    Chatberichten
+                                </MudButton>
+                            </MudBadge>
+                        </MudStack>
+
+                     
+                    </MudItem>
+                </MudGrid>
+
+                <!-- Geplande sessies overzicht -->
+                @{
+                    var buddySessies = _sessies.Where(s => s.AnderstaligId == koppeling.AnderstaligId).Take(3).ToList();
+                }
+                @if (buddySessies.Any())
+                {
+                    <MudDivider Class="my-3" />
+                    <MudText Typo="Typo.subtitle2" Class="mb-2"> Geplande sessies:</MudText>
+                    @foreach (var s in buddySessies)
+                    {
+                        var isVerleden = s.GeplandOp < DateTime.UtcNow;
+                        <MudChip T="string"
+                                 Color="@(isVerleden ? Color.Default : Color.Primary)"
+                                 Size="Size.Small"
+                                 Class="mr-2 mb-1"
+                                 OnClose="@(isVerleden ? null : () => AnnuleerSessie(s))">
+                            @s.GeplandOp.ToLocalTime().ToString("dd/MM/yyyy HH:mm")
+                        </MudChip>
+                    }
+                }
+            </MudCardContent>
+        </MudCard>
+    }
+}
+
+@code {
+    private List<BuddyKoppeling> _buddies = new();
+    private List<Sessie> _sessies = new();
+    private Dictionary<string, int> _ongelezenBerichten = new();
+    private string? _userId;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        await LaadData();
+
+        ChatEvents.OnNieuwBericht += HandleNieuwBericht;
+    }
+
+    private async void HandleNieuwBericht(string ontvangerId, string afzenderId)
+    {
+        if (ontvangerId == _userId && _ongelezenBerichten.ContainsKey(afzenderId))
+        {
+            await InvokeAsync(() =>
+            {
+                _ongelezenBerichten[afzenderId]++;
+                StateHasChanged();
+            });
+        }
+    }
+
+    private async Task LaadData()
+    {
+        if (_userId == null) return;
+        _buddies = (await BuddyService.GetActieveBuddiesVanVrijwilliger(_userId)).ToList();
+        _sessies = (await SessieService.GetSessiesVanVrijwilligerAsync(_userId)).ToList();
+
+        foreach (var koppeling in _buddies)
+        {
+            var ongelezen = await ChatService.TotaalOngelezenVanAfzenderAsync(_userId, koppeling.AnderstaligId);
+            _ongelezenBerichten[koppeling.AnderstaligId] = ongelezen;
+        }
+    }
+
+    private async Task PlanSessie(BuddyKoppeling koppeling)
+    {
+        var aanloop = Configuration.GetValue<int>("VideoActivationLeadTimeMinutes", 10);
+        var parameters = new DialogParameters<SessieDialog>
+        {
+            { x => x.AanloopMinuten, aanloop }
+        };
+
+        var dlg = await DialogService.ShowAsync<SessieDialog>("Sessie plannen", parameters);
+        var result = await dlg.Result;
+        if (result?.Canceled == true) return;
+
+        var geplandOp = (DateTime)result!.Data!;
+        await SessieService.PlanSessieAsync(_userId!, koppeling.AnderstaligId, geplandOp.ToUniversalTime());
+        Snackbar.Add("✅ Sessie gepland! De video-knop wordt actief vóór de sessie.", Severity.Success);
+        await LaadData();
+    }
+
+    private async Task DownloadKalender(Sessie sessie)
+    {
+        var aanloopMinuten = Configuration.GetValue<int>("VideoActivationLeadTimeMinutes", 10);
+        var icsInhoud = CalendarService.GenereerIcs(
+            "TaalMaat Videogesprek met uw Buddy",
+            sessie.GeplandOp.ToLocalTime(),
+            sessie.GeplandOp.ToLocalTime().AddHours(1),
+            "Videogesprek via https://meet.ffmuc.net",
+            $"Log in op het TaalMaat platform om deel te nemen aan het gesprek. De videoknop wordt {aanloopMinuten} minuten voor aanvang actief."
+        );
+
+        var bytes = System.Text.Encoding.UTF8.GetBytes(icsInhoud);
+        var base64 = Convert.ToBase64String(bytes);
+        await JS.InvokeVoidAsync("taalmaat.downloadFileFromBase64", "taalmaat-sessie.ics", base64, "text/calendar");
+    }
+
+    private async Task OntkoppelBuddy(BuddyKoppeling koppeling)
+    {
+        var gelukt = await BuddyService.OntkoppelAsync(koppeling.VrijwilligerId, koppeling.AnderstaligId);
+        if (gelukt)
+        {
+            Snackbar.Add("Verbinding verbroken. U verschijnt nu weer in de zoeklijst.", Severity.Info);
+            await LaadData();
+        }
+    }
+
+    private async Task AnnuleerSessie(Sessie sessie)
+    {
+        var confirmed = await DialogService.ShowMessageBox(
+            "Sessie Annuleren",
+            $"Weet u zeker dat u de sessie van {sessie.GeplandOp.ToLocalTime():dd/MM/yyyy HH:mm} wilt annuleren?",
+            yesText: "Ja, annuleer", cancelText: "Nee");
+
+        if (confirmed == true)
+        {
+            await SessieService.VerwijderSessieAsync(sessie.Id);
+            Snackbar.Add("De sessie is succesvol geannuleerd.", Severity.Info);
+            await LaadData();
+        }
+    }
+
+    private async Task OpenChat(ApplicationUser andereGebruiker)
+    {
+        var parameters = new DialogParameters<TaalMaat.WebUI.Components.Shared.ChatDialog>
+        {
+            { x => x.TeSprekenPersoon, andereGebruiker }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<TaalMaat.WebUI.Components.Shared.ChatDialog>($"Chat met {andereGebruiker.VolledigeNaam}", parameters, options);
+
+        _ongelezenBerichten[andereGebruiker.Id] = 0;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ChatEvents.OnNieuwBericht -= HandleNieuwBericht;
+    }
+}

@@ -1,0 +1,27 @@
+@page "/toegang-geweigerd"
+@inject NavigationManager Navigation
+
+<PageTitle>Toegang Geweigerd – TaalMaat</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-12">
+    <MudPaper Elevation="3" Class="pa-8 text-center" Style="border-radius:20px;">
+        <MudIcon Icon="@Icons.Material.Filled.Block" Color="Color.Error" Style="font-size:5rem;" Class="mb-4" />
+        <MudText Typo="Typo.h4" Class="mb-4">Toegang geweigerd</MudText>
+        <MudText Typo="Typo.body1" Class="mb-6 mud-text-secondary">
+            U heeft geen toegang tot deze pagina.<br />
+            Controleer of u bent ingelogd met het juiste account.
+        </MudText>
+        <MudStack Row="true" Justify="Justify.Center" Spacing="3">
+            <MudButton Href="/login" Variant="Variant.Filled" Color="Color.Primary" Size="Size.Large">
+                Inloggen
+            </MudButton>
+            <MudButton OnClick="TerugNaar" Variant="Variant.Outlined" Size="Size.Large">
+                Terug
+            </MudButton>
+        </MudStack>
+    </MudPaper>
+</MudContainer>
+
+@code {
+    private void TerugNaar() => Navigation.NavigateTo("/");
+}

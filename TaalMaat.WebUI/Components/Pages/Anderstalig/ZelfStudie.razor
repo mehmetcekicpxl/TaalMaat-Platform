@@ -1,0 +1,152 @@
+@page "/student/zelfstudie"
+@attribute [Authorize(Roles = "Anderstalig")]
+@inject OefeningService OefeningService
+@inject ExterneBronService ExterneBronService
+@inject NavigationManager Navigation
+
+<PageTitle>Zelfstudie – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">Zelfstudie Nederlands</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-6 mud-text-secondary">
+    Kies uw taalniveau en oefen via teksten en video's, of gebruik onze externe bronnen.
+</MudText>
+
+<MudGrid Spacing="3">
+    @foreach (OefeningNiveau niveau in Enum.GetValues(typeof(OefeningNiveau)))
+    {
+        var kleur = niveau switch
+        {
+            OefeningNiveau.A1 => Color.Primary,
+            OefeningNiveau.A2 => Color.Primary,
+            OefeningNiveau.B1 => Color.Primary,
+            OefeningNiveau.B2 => Color.Primary,
+            OefeningNiveau.C1 => Color.Primary,
+            OefeningNiveau.C2 => Color.Primary,
+            _ => Color.Default
+        };
+
+        <MudItem xs="6" sm="4" md="2">
+            <MudButton Variant="Variant.Filled" Color="@kleur"
+                       FullWidth="true" Size="Size.Large"
+                       Style="min-height:80px; font-size:1.4rem; font-weight:bold;"
+                       OnClick="() => LaadNiveau(niveau)">
+                @niveau.ToString()
+            </MudButton>
+        </MudItem>
+    }
+</MudGrid>
+
+@if (_geladenNiveau != null && _oefeningen != null)
+{
+    <MudDivider Class="my-6" />
+    <MudText Typo="Typo.h5" Class="mb-4">
+        Oefeningen niveau @_geladenNiveau.ToString()
+        <MudChip T="string" Color="Color.Info" Size="Size.Small" Class="ml-2">@_oefeningen.Count oefeningen</MudChip>
+    </MudText>
+
+    @if (!_oefeningen.Any())
+    {
+        <MudAlert Severity="Severity.Info">Nog geen oefeningen beschikbaar voor dit niveau.</MudAlert>
+    }
+    else
+    {
+
+        <MudGrid>
+            @foreach (var oe in _oefeningen)
+            {
+                <MudItem xs="12" sm="6" md="4" Class="d-flex align-stretch">
+
+                    <MudCard Elevation="3" Style="cursor:pointer; width: 100%;" Class="d-flex flex-column" @onclick="() => NavigeerNaarOefening(oe.Id)">
+                        <MudCardContent Class="flex-grow-1">
+                            <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                                @if (!string.IsNullOrEmpty(oe.YouTubeUrl))
+                                {
+                                    <MudIcon Icon="@Icons.Custom.Brands.YouTube" Color="Color.Error" />
+                                    <MudChip T="string" Color="Color.Error" Size="Size.Small">Kijken</MudChip>
+                                }
+                                else if (!string.IsNullOrEmpty(oe.AudioUrl))
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Headphones" Color="Color.Warning" />
+                                    <MudChip T="string" Color="Color.Warning" Size="Size.Small">Luisteren</MudChip>
+                                }
+                                else
+                                {
+                                    <MudIcon Icon="@Icons.Material.Filled.Article" Color="Color.Primary" />
+                                    <MudChip T="string" Color="Color.Primary" Size="Size.Small">Lezen</MudChip>
+                                }
+                            </MudStack>
+                            <MudText Typo="Typo.subtitle1" Class="mb-1">@oe.Titel</MudText>
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">
+                                @oe.Vragen.Count vragen
+                            </MudText>
+                        </MudCardContent>
+                    </MudCard>
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+<MudDivider Class="my-8" />
+<MudText Typo="Typo.h5" Class="mb-4">Nuttige externe bronnen</MudText>
+
+@if (_externeBronnen == null)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (!_externeBronnen.Any())
+{
+    <MudAlert Severity="Severity.Info">Er zijn momenteel geen externe bronnen beschikbaar.</MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var bron in _externeBronnen)
+        {
+            <MudItem xs="12" sm="6" md="4" Class="d-flex align-stretch">
+
+                <MudCard Elevation="2" Style="width: 100%;" Class="d-flex flex-column">
+                    <MudCardContent Class="flex-grow-1">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Class="mb-2">
+                            <MudIcon Icon="@Icons.Material.Filled.Public" Color="Color.Info" />
+                            <MudText Typo="Typo.h6">@bron.Titel</MudText>
+                        </MudStack>
+                        @if (!string.IsNullOrEmpty(bron.Beschrijving))
+                        {
+                            <MudText Typo="Typo.body2" Class="mud-text-secondary">@bron.Beschrijving</MudText>
+                        }
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary"
+                                   StartIcon="@Icons.Material.Filled.OpenInNew"
+                                   Href="@bron.Url" Target="_blank">
+                            Naar website
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+@code {
+    private OefeningNiveau? _geladenNiveau;
+    private List<Oefening>? _oefeningen;
+
+    // Lijst voor de externe links
+    private List<TaalMaat.Core.Entities.ExterneBron>? _externeBronnen;
+
+    // Haal de externe bronnen direct op bij het laden van de pagina
+    protected override async Task OnInitializedAsync()
+    {
+        _externeBronnen = (await ExterneBronService.GetAllAsync()).ToList();
+    }
+
+    private async Task LaadNiveau(OefeningNiveau niveau)
+    {
+        _geladenNiveau = niveau;
+        _oefeningen = (await OefeningService.GetGoedgekeurdeByNiveauAsync(niveau)).ToList();
+    }
+
+    private void NavigeerNaarOefening(int id) => Navigation.NavigateTo($"/student/oefening/{id}");
+}

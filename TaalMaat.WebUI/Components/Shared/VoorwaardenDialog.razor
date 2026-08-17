@@ -1,0 +1,82 @@
+@inject IDialogService DialogService
+
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            <MudIcon Icon="@Icons.Material.Filled.Gavel" Class="mr-2" />
+            Gebruiksvoorwaarden & Privacybeleid  TaalMaat
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mud-text-secondary mb-4">
+            Versie 1.0 | Geldig vanaf 1 januari 2026 | Taal: Nederlands (België)
+        </MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">1. Wie zijn wij?</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            TaalMaat is een burgertechplatform dat vrijwilligers koppelt aan anderstaligen voor taalcoaching.
+            Het platform wordt beheerd door de lokale gemeente en valt onder de Belgische en Europese privacywetgeving (AVG/GDPR).
+        </MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">2. Dataminimalisatie (AVG Art. 5)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            Wij verzamelen uitsluitend de gegevens die strikt noodzakelijk zijn voor de werking van het platform:
+            e-mailadres, telefoonnummer, hobbies en een korte introductietekst.
+            Uw <strong>e-mailadres en telefoonnummer zijn strikt vertrouwelijk</strong> en worden nooit getoond aan andere gebruikers.
+            Alleen u en de platformbeheerder kunnen deze gegevens inzien.
+        </MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">3. Recht op Vergetelheid (AVG Art. 17)</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            U heeft te allen tijde het recht om uw account en alle bijbehorende persoonsgegevens
+            <strong>definitief te laten verwijderen</strong> via de knop "Mijn account verwijderen" in uw profiel.
+            Na verwijdering worden alle gegevens onherroepelijk gewist uit onze databases.
+        </MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">4. Aansprakelijkheidsbeperking</MudText>
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            <MudText Typo="Typo.body2">
+                Elke gebruiker is zelf verantwoordelijk voor zijn of haar interacties op het platform.
+                TaalMaat treedt uitsluitend op als koppelplatform en aanvaardt geen aansprakelijkheid voor
+                de inhoud van gesprekken, afspraken of gedragingen tussen gebruikers.
+                Ongepast gedrag dient gemeld te worden bij de beheerder.
+            </MudText>
+        </MudAlert>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">5. Schorsing van accounts</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            TaalMaat behoudt het recht om accounts te <strong>blokkeren of definitief te verwijderen</strong>
+            bij ongepast gedrag, misbruik, intimidatie of schending van deze voorwaarden. 
+            Bij blokkering wordt de gebruiker per e-mail verwittigd over de reden van de blokkering.
+        </MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">6. Gegevensbeveiliging & Privacy</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            Uw gegevens worden veilig opgeslagen en streng beveiligd. Wij delen uw gegevens nooit met derden.
+            <br /><br />
+            <strong>Privéberichten:</strong> Uw chatberichten worden versleuteld (beveiligd) opgeslagen. Dit betekent dat buitenstaanders ze niet kunnen lezen. Alleen bij een formele klacht of een melding van misbruik kan de beheerder de berichten inzien. Zo houden we het platform veilig voor iedereen.
+        </MudText>
+
+        <MudText Typo="Typo.h6" Class="mt-4 mb-2">7. Contact</MudText>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            Voor vragen over uw persoonsgegevens kunt u contact opnemen via:
+            <MudLink Href="https://codeforbelgium.org/" Target="_blank">https://codeforbelgium.org</MudLink>
+        </MudText>
+
+        <MudDivider Class="my-4" />
+        <MudText Typo="Typo.caption" Class="mud-text-secondary">
+            Door op "Sluiten" te klikken en het vakje "Ik aanvaard de voorwaarden" aan te vinken,
+            bevestigt u dat u deze voorwaarden heeft gelezen en aanvaardt.
+        </MudText>
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Sluiten" Variant="Variant.Filled" Color="Color.Primary">Sluiten</MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter]
+    private MudDialogInstance MudDialog { get; set; } = null!;
+
+    private void Sluiten() => MudDialog.Close(DialogResult.Ok(true));
+}

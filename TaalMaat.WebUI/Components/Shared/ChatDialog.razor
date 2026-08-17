@@ -1,0 +1,170 @@
+@using Microsoft.AspNetCore.SignalR.Client
+@using TaalMaat.Core.Entities
+@using TaalMaat.Application.Services
+@inject IServiceScopeFactory ScopeFactory
+@inject ChatEventService ChatEvents
+@inject AuthenticationStateProvider AuthStateProvider
+@inject NavigationManager NavigationManager
+@inject ISnackbar Snackbar
+@inject IDialogService DialogService
+
+<MudDialog>
+    <TitleContent>
+        <MudStack Row="true" AlignItems="AlignItems.Center" Justify="Justify.SpaceBetween" Class="flex-grow-1 pr-4">
+            <MudText Typo="Typo.h6">Chat met @TeSprekenPersoon.Voornaam</MudText>
+            <MudIconButton Icon="@Icons.Material.Filled.Report" 
+                           Color="Color.Error" 
+                           Size="Size.Small" 
+                           OnClick="OpenRapportageDialog" 
+                           Title="Rapporteer dit gesprek"
+                           Class="mr-8" />
+        </MudStack>
+    </TitleContent>
+    <DialogContent>
+        <div style="height: 400px; overflow-y: auto; display: flex; flex-direction: column; padding: 10px;" id="chat-venster">
+            @if (_berichten == null)
+            {
+                <MudProgressCircular Indeterminate="true" Class="mx-auto mt-4" />
+            }
+            else if (!_berichten.Any())
+            {
+                <MudText Typo="Typo.body2" Class="mud-text-secondary mx-auto mt-4">Nog geen berichten. Stuur de eerste!</MudText>
+            }
+            else
+            {
+                @foreach (var msg in _berichten)
+                {
+                    bool isMijnBericht = msg.AfzenderId == _mijnId;
+
+                    <div style="margin-bottom: 10px; max-width: 80%; align-self: @(isMijnBericht ? "flex-end" : "flex-start");">
+                        <MudPaper Elevation="2" Style="@($"padding: 10px; border-radius: 12px; background-color: {(isMijnBericht ? "var(--mud-palette-primary-lighten)" : "var(--mud-palette-background-grey)")};")">
+                            <MudText Typo="Typo.body1" Style="@($"color: {(isMijnBericht ? "white" : "inherit")};")">
+                                @msg.Inhoud
+                            </MudText>
+                            <MudText Typo="Typo.caption" Style="@($"display: block; text-align: right; color: {(isMijnBericht ? "#e0e0e0" : "gray")}; margin-top: 4px;")">
+                                @msg.VerzondenOp.ToLocalTime().ToString("HH:mm")
+                            </MudText>
+                        </MudPaper>
+                    </div>
+                }
+            }
+        </div>
+        
+        <MudDivider Class="my-2" />
+        
+        <MudPaper Elevation="0" Class="d-flex align-center px-2 py-1" Style="background-color: var(--mud-palette-background-grey); border-radius: 20px;">
+            <MudTextField @bind-Value="_nieuwBericht" 
+                          Placeholder="Typ een bericht..." 
+                          DisableUnderLine="true" 
+                          Margin="Margin.None"
+                          Class="flex-grow-1 mx-2"
+                          OnKeyDown="HandleKeyDown" />
+                          
+            <MudIconButton Icon="@Icons.Material.Filled.Send" 
+                           Color="Color.Primary" 
+                           Disabled="@(string.IsNullOrWhiteSpace(_nieuwBericht) || _isVerzenden)"
+                           OnClick="VerstuurBericht" />
+        </MudPaper>
+    </DialogContent>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public ApplicationUser TeSprekenPersoon { get; set; } = null!;
+
+    private List<Bericht>? _berichten;
+    private string? _mijnId;
+    private string _nieuwBericht = string.Empty;
+    private bool _isVerzenden = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _mijnId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (_mijnId != null)
+        {
+            await LaadGeschiedenis();
+            // Subscribe op events ipv eigen SignalR hub connectie in de server
+            ChatEvents.OnNieuwBericht += HandleNieuwBericht;
+        }
+    }
+
+    private async Task LaadGeschiedenis()
+    {
+        if (_mijnId == null) return;
+        
+        using var scope = ScopeFactory.CreateScope();
+        var chatService = scope.ServiceProvider.GetRequiredService<ChatService>();
+        
+        var historie = await chatService.GetChatGeschiedenisAsync(_mijnId, TeSprekenPersoon.Id);
+        _berichten = historie.ToList();
+
+        await chatService.MarkeerAlsGelezenAsync(_mijnId, TeSprekenPersoon.Id);
+    }
+
+    private async void HandleNieuwBericht(string ontvangerId, string afzenderId)
+    {
+        // Alleen vernieuwen als het bericht VOOR MIJ is en afkomstig van DE PERSOON WAARMEE IK NU CHAT
+        if (ontvangerId == _mijnId && afzenderId == TeSprekenPersoon.Id)
+        {
+            await InvokeAsync(async () =>
+            {
+                await LaadGeschiedenis();
+                StateHasChanged(); // UI updaten
+            });
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await VerstuurBericht();
+        }
+    }
+
+    private async Task VerstuurBericht()
+    {
+        if (string.IsNullOrWhiteSpace(_nieuwBericht) || _mijnId == null || _isVerzenden) return;
+
+        _isVerzenden = true;
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var chatService = scope.ServiceProvider.GetRequiredService<ChatService>();
+            
+            var (succes, fout) = await chatService.VerstuurBerichtAsync(_mijnId, TeSprekenPersoon.Id, _nieuwBericht);
+            if (succes)
+            {
+                _nieuwBericht = string.Empty;
+                await LaadGeschiedenis();
+            }
+            else
+            {
+                Snackbar.Add(fout, Severity.Error);
+            }
+        }
+        finally
+        {
+            _isVerzenden = false;
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        ChatEvents.OnNieuwBericht -= HandleNieuwBericht;
+        await Task.CompletedTask;
+    }
+
+    private async Task OpenRapportageDialog()
+    {
+        var parameters = new DialogParameters
+        {
+            { "MijnId", _mijnId },
+            { "GerapporteerdeId", TeSprekenPersoon.Id }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<RapporteerDialog>("Gesprek Rapporteren", parameters, options);
+    }
+}

@@ -1,0 +1,177 @@
+@page "/admin/chatbeheer"
+@attribute [Authorize(Roles = "Admin")]
+@inject TaalMaat.Application.Services.ChatService ChatService
+@inject ISnackbar Snackbar
+
+<PageTitle>Chat Rapportages Inzien – TaalMaat Admin</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Large" Class="mt-8">
+    <MudText Typo="Typo.h4" Class="mb-4">Chat beheer & rapportages</MudText>
+
+    @if (_rapporten == null)
+    {
+        <MudProgressCircular Indeterminate="true" Color="Color.Primary" />
+    }
+    else if (_rapporten.Any())
+    {
+        <MudText Typo="Typo.h6" Class="mb-2">Ingekomen rapportages</MudText>
+        <MudPaper Elevation="4" Class="pa-4 mb-6">
+            <MudTable Items="_rapporten" Hover="true" Breakpoint="Breakpoint.Sm" Dense="true" Elevation="0">
+                <HeaderContent>
+                    <MudTh>Datum</MudTh>
+                    <MudTh>Melder</MudTh>
+                    <MudTh>Gerapporteerde</MudTh>
+                    <MudTh>Toelichting</MudTh>
+                    <MudTh>Toestemming</MudTh>
+                    <MudTh>Status</MudTh>
+                    <MudTh>Actie</MudTh>
+                </HeaderContent>
+                <RowTemplate>
+                    <MudTd DataLabel="Datum">@context.RapportageDatum.ToLocalTime().ToString("dd-MM HH:mm")</MudTd>
+                    <MudTd DataLabel="Melder">@context.Rapporteerder?.Email</MudTd>
+                    <MudTd DataLabel="Gerapporteerde">@context.Gerapporteerde?.Email</MudTd>
+                    <MudTd DataLabel="Toelichting">@context.Toelichting</MudTd>
+                    <MudTd DataLabel="Toestemming">
+                        @if (context.ToestemmingGegeven)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" />
+                        }
+                        else
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.Cancel" Color="Color.Error" />
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Status">
+                        @if (context.IsAfgehandeld)
+                        {
+                            <MudChip T="string" Color="Color.Success" Size="Size.Small">Afgehandeld</MudChip>
+                        }
+                        else
+                        {
+                            <MudChip T="string" Color="Color.Warning" Size="Size.Small">Open</MudChip>
+                        }
+                    </MudTd>
+                    <MudTd DataLabel="Actie">
+                        <MudButton Variant="Variant.Outlined" 
+                                   Color="Color.Info" 
+                                   Size="Size.Small" 
+                                   Disabled="@(!context.ToestemmingGegeven)"
+                                   OnClick="() => BekijkRapport(context.Id)"
+                                   StartIcon="@Icons.Material.Filled.Visibility">
+                            Bekijk Chat
+                        </MudButton>
+                        @if (!context.IsAfgehandeld)
+                        {
+                            <MudButton Variant="Variant.Text" 
+                                       Color="Color.Success" 
+                                       Size="Size.Small" 
+                                       OnClick="() => MarkeerAfgehandeld(context.Id)"
+                                       Class="ml-2">
+                                Sluiten
+                            </MudButton>
+                        }
+                    </MudTd>
+                </RowTemplate>
+            </MudTable>
+        </MudPaper>
+    }
+    else
+    {
+        <MudAlert Severity="Severity.Info">Er zijn momenteel geen chat rapportages.</MudAlert>
+    }
+
+    @if (_isGezocht)
+    {
+        <MudDivider Class="my-6" />
+        
+        @if (_berichten == null || !_berichten.Any())
+        {
+            <MudAlert Severity="Severity.Warning">Er zijn geen berichten gevonden voor deze rapportage.</MudAlert>
+        }
+        else
+        {
+            <MudPaper Elevation="2" Class="pa-4">
+                <div class="d-flex align-center mb-4">
+                    <MudText Typo="Typo.h6">Chatgeschiedenis</MudText>
+                    <MudSpacer />
+                    <MudButton Variant="Variant.Text" Color="Color.Default" OnClick="() => _isGezocht = false">Sluiten</MudButton>
+                </div>
+                <div style="max-height: 600px; overflow-y: auto;" class="pa-2 border rounded">
+                    @foreach (var bericht in _berichten)
+                    {
+                        var isReported = bericht.AfzenderId == _gerapporteerdeId;
+                        <MudCard Class="mb-2" Elevation="1" Style="@(isReported ? "background-color: #fff0f0; border-left: 4px solid red;" : "background-color: #f0f8ff;")">
+                            <MudCardContent Class="pa-2">
+                                <MudText Typo="Typo.caption" Class="fw-bold" Color="@(isReported ? Color.Error : Color.Primary)">
+                                    @(bericht.Afzender?.Email) - @bericht.VerzondenOp.ToLocalTime().ToString("dd-MM-yyyy HH:mm")
+                                </MudText>
+                                <MudText Typo="Typo.body2" Class="mt-1">
+                                    @bericht.Inhoud
+                                </MudText>
+                            </MudCardContent>
+                        </MudCard>
+                    }
+                </div>
+            </MudPaper>
+        }
+    }
+</MudContainer>
+
+@code {
+    private bool _bezig = false;
+    private bool _isGezocht = false;
+    private string _gerapporteerdeId = string.Empty;
+    private List<TaalMaat.Core.Entities.Bericht>? _berichten;
+    private List<TaalMaat.Core.Entities.ChatRapport>? _rapporten;
+
+    protected override async Task OnInitializedAsync()
+    {
+        await LaadRapporten();
+    }
+
+    private async Task LaadRapporten()
+    {
+        var rapportenEnum = await ChatService.GetRapportenAsync();
+        _rapporten = rapportenEnum.ToList();
+    }
+
+    private async Task MarkeerAfgehandeld(int id)
+    {
+        await ChatService.MarkeerRapportAlsAfgehandeldAsync(id);
+        await LaadRapporten();
+        Snackbar.Add("Rapportage gemarkeerd als afgehandeld.", Severity.Success);
+    }
+
+    private async Task BekijkRapport(int rapportId)
+    {
+        _bezig = true;
+        _isGezocht = false;
+        StateHasChanged();
+
+        try
+        {
+            var r = _rapporten?.FirstOrDefault(x => x.Id == rapportId);
+            _gerapporteerdeId = r?.GerapporteerdeId ?? string.Empty;
+
+            _berichten = (await ChatService.GetBerichtenVoorAdminGedecodeerdAsync(rapportId)).ToList();
+            _isGezocht = true;
+            if (_berichten.Any())
+            {
+                Snackbar.Add($"Chatgeschiedenis geladen ({_berichten.Count} berichten).", Severity.Success);
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Snackbar.Add(ex.Message, Severity.Error);
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fout bij het ophalen: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _bezig = false;
+            StateHasChanged();
+        }
+    }
+}

@@ -1,0 +1,71 @@
+@page "/admin"
+@attribute [Authorize(Roles = "Admin")]
+@inject GebruikerService GebruikerService
+
+<PageTitle>Admin Dashboard – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-6">Admin dashboard</MudText>
+
+<MudGrid>
+   
+    <MudItem xs="12" sm="6" md="4">
+        <MudPaper Elevation="3" Class="pa-6 d-flex flex-column align-center justify-center" Style="height: 100%">
+            <MudIcon Icon="@Icons.Material.Filled.VolunteerActivism" Size="Size.Large" Color="Color.Success" />
+            <MudText Typo="Typo.h3" Class="mt-2">@_aantalVrijwilligers</MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center">Vrijwilligers</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="4">
+        <MudPaper Elevation="3" Class="pa-6 d-flex flex-column align-center justify-center" Style="height: 100%">
+            <MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Large" Color="Color.Warning" />
+            <MudText Typo="Typo.h3" Class="mt-2">@_aantalAnderstaligen</MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center">Anderstaligen</MudText>
+        </MudPaper>
+    </MudItem>
+    <MudItem xs="12" sm="6" md="4">
+        <MudPaper Elevation="3" Class="pa-6 d-flex flex-column align-center justify-center" Style="height: 100%">
+            <MudIcon Icon="@Icons.Material.Filled.PendingActions" Size="Size.Large" Color="Color.Error" />
+            <MudText Typo="Typo.h3" Class="mt-2">@_aantalNietGoedgekeurd</MudText>
+            <MudText Typo="Typo.body2" Align="Align.Center">Vrijwilligers die op goedkeuring wachten</MudText>
+        </MudPaper>
+    </MudItem>
+</MudGrid>
+
+<MudGrid Class="mt-4">
+    <MudItem xs="12" md="4">
+        <MudButton Href="/admin/gebruikers" Variant="Variant.Filled" Color="Color.Primary" FullWidth="true" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.People" Class="mb-3">
+            Gebruikers
+        </MudButton>
+        <MudButton Href="/admin/gemeenten" Variant="Variant.Filled" Color="Color.Tertiary" FullWidth="true" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.LocationCity" Class="mb-3">
+            Gemeenten
+        </MudButton>
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudButton Href="/admin/oefeningen" Variant="Variant.Filled" Color="Color.Secondary" FullWidth="true" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.MenuBook">
+            Oefeningen
+        </MudButton>
+    </MudItem>
+    <MudItem xs="12" md="4">
+        <MudButton Href="/admin/chatbeheer" Variant="Variant.Filled" Color="Color.Error" FullWidth="true" Size="Size.Large"
+                   StartIcon="@Icons.Material.Filled.Security">
+            Chat rapportages
+        </MudButton>
+    </MudItem>
+   
+</MudGrid>
+
+@code {
+    private int _aantalGebruikers, _aantalVrijwilligers, _aantalAnderstaligen, _aantalNietGoedgekeurd;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var gebruikers = (await GebruikerService.GetAllAsync()).ToList();
+        _aantalGebruikers = gebruikers.Count;
+        _aantalVrijwilligers = gebruikers.Count(u => u.Rol == GebruikerRol.Vrijwilliger && u.IsGeaccepteerd);
+        _aantalAnderstaligen = gebruikers.Count(u => u.Rol == GebruikerRol.Anderstalig);
+        _aantalNietGoedgekeurd = gebruikers.Count(u => u.Rol == GebruikerRol.Vrijwilliger && !u.IsGeaccepteerd);
+    }
+}

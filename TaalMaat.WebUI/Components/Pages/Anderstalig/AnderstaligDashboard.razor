@@ -1,0 +1,145 @@
+@page "/student"
+@implements IDisposable
+@attribute [Authorize(Roles = "Anderstalig")]
+@inject BuddyService BuddyService
+@inject SessieService SessieService
+@inject ChatService ChatService
+@inject TaalMaat.Application.Services.ChatEventService ChatEvents
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IDialogService DialogService
+@inject ISnackbar Snackbar
+
+<PageTitle>Mijn Leerplatform – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-2">Welkom bij TaalMaat!</MudText>
+<MudText Typo="Typo.subtitle1" Class="mb-6 mud-text-secondary">
+    Vind een vrijwilliger om je te helpen met Nederlands, of oefen zelfstandig.
+</MudText>
+
+<MudGrid Spacing="4">
+    <MudItem xs="12" sm="6">
+        <MudCard Elevation="4" Class="pa-4" Style="cursor:pointer;" @onclick='() => NavigerenNaar("/student/zoeken")'>
+            <MudCardContent Class="d-flex flex-column align-center">
+                <MudIcon Icon="@Icons.Material.Filled.PersonSearch" Size="Size.Large" Color="Color.Primary" Class="mb-3" />
+                <MudText Typo="Typo.h6">Zoek een vrijwilliger</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary text-center mt-2">
+                    Bekijk beschikbare vrijwilligers en stuur een buddyverzoek
+                </MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    <MudItem xs="12" sm="6">
+        <MudCard Elevation="4" Class="pa-4" Style="cursor:pointer;" @onclick='() => NavigerenNaar("/student/zelfstudie")'>
+            <MudCardContent Class="d-flex flex-column align-center">
+                <MudIcon Icon="@Icons.Material.Filled.School" Size="Size.Large" Color="Color.Success" Class="mb-3" />
+                <MudText Typo="Typo.h6">Zelfstudie A1 – C2</MudText>
+                <MudText Typo="Typo.body2" Class="mud-text-secondary text-center mt-2">
+                    Lees teksten, bekijk video's en maak oefeningen
+                </MudText>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+    
+   
+           
+</MudGrid>
+
+@code {
+    private List<BuddyKoppeling>? _actieveBuddies;
+    private string? _userId;
+    private Dictionary<string, int> _ongelezenBerichten = new();
+
+    [Inject] private NavigationManager Navigation { get; set; } = null!;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        _userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+        
+        if (_userId != null)
+        {
+            _actieveBuddies = (await BuddyService.GetActieveBuddiesVanAnderstalig(_userId)).ToList();
+            
+            // Laad ongelezen berichten counts
+            foreach (var koppeling in _actieveBuddies)
+            {
+                var ongelezen = await ChatService.TotaalOngelezenVanAfzenderAsync(_userId, koppeling.VrijwilligerId);
+                _ongelezenBerichten[koppeling.VrijwilligerId] = ongelezen;
+            }
+            
+            ChatEvents.OnNieuwBericht += HandleNieuwBericht;
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender && _userId != null)
+        {
+            // Check voor afgewezen buddyverzoeken (alleen na interactieve render)
+            var afgewezenVerzoeken = await BuddyService.GetAfgewezenVerzoekenVoorVerzenderAsync(_userId);
+            foreach(var verzoek in afgewezenVerzoeken)
+            {
+                Snackbar.Add(verzoek.AfwijzingBericht ?? "Je buddyverzoek is helaas afgewezen door de vrijwilliger.", Severity.Info, config => { config.RequireInteraction = true; });
+                await BuddyService.VerwijderVerzoekAsync(verzoek.Id);
+            }
+
+            // Check voor geaccepteerde buddyverzoeken
+            var geaccepteerdeVerzoeken = await BuddyService.GetGeaccepteerdeVerzoekenVoorVerzenderAsync(_userId);
+            foreach(var verzoek in geaccepteerdeVerzoeken)
+            {
+                Snackbar.Add("Gefeliciteerd! Je buddyverzoek is geaccepteerd door de vrijwilliger. Je kunt nu samen aan de slag!", Severity.Success, config => { config.RequireInteraction = true; });
+                await BuddyService.VerwijderVerzoekAsync(verzoek.Id);
+            }
+        }
+    }
+    
+    private async void HandleNieuwBericht(string ontvangerId, string afzenderId)
+    {
+        if (ontvangerId == _userId && _ongelezenBerichten.ContainsKey(afzenderId))
+        {
+            await InvokeAsync(() =>
+            {
+                _ongelezenBerichten[afzenderId]++;
+                StateHasChanged();
+            });
+        }
+    }
+
+    private void NavigerenNaar(string url) => Navigation.NavigateTo(url);
+
+    private async Task PlanSessie(BuddyKoppeling koppeling)
+    {
+        var parameters = new DialogParameters<TaalMaat.WebUI.Components.Shared.StudentSessieDialog>
+        {
+            { x => x.VrijwilligerId, koppeling.VrijwilligerId }
+        };
+
+        var dlg = await DialogService.ShowAsync<TaalMaat.WebUI.Components.Shared.StudentSessieDialog>("Sessie Plannen", parameters);
+        var result = await dlg.Result;
+        
+        if (result?.Canceled == false && result.Data is DateTime geplandeTijd)
+        {
+            await SessieService.PlanSessieAsync(koppeling.VrijwilligerId, _userId!, geplandeTijd.ToUniversalTime());
+            Snackbar.Add($"Sessie succesvol ingepland voor {geplandeTijd:dd-MM HH:mm}!", Severity.Success);
+        }
+    }
+
+    private async Task OpenChat(ApplicationUser andereGebruiker)
+    {
+        var parameters = new DialogParameters<TaalMaat.WebUI.Components.Shared.ChatDialog>
+        {
+            { x => x.TeSprekenPersoon, andereGebruiker }
+        };
+        var options = new DialogOptions { CloseButton = true, MaxWidth = MaxWidth.Small, FullWidth = true };
+        await DialogService.ShowAsync<TaalMaat.WebUI.Components.Shared.ChatDialog>($"Chat met {andereGebruiker.VolledigeNaam}", parameters, options);
+        
+        // Zodra chatvenster sluit of terugkeert, reset de count naar 0
+        _ongelezenBerichten[andereGebruiker.Id] = 0;
+        StateHasChanged();
+    }
+
+    public void Dispose()
+    {
+        ChatEvents.OnNieuwBericht -= HandleNieuwBericht;
+    }
+}

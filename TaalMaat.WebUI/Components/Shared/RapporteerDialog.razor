@@ -1,0 +1,73 @@
+@using TaalMaat.Application.Services
+@inject ChatService ChatService
+@inject ISnackbar Snackbar
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            U staat op het punt om een melding te maken over dit gesprek. 
+            Om uw melding goed te kunnen beoordelen, heeft een beheerder toegang nodig tot de inhoud van dit gesprek.
+        </MudText>
+        
+        <MudAlert Severity="Severity.Warning" Class="mb-4">
+            Door op 'Rapporteren' te klikken, geeft u expliciet toestemming aan de beheerder om uw chatgeschiedenis met deze persoon in te zien.
+        </MudAlert>
+
+        <MudTextField @bind-Value="_toelichting" 
+                      Label="Toelichting (optioneel)" 
+                      Variant="Variant.Outlined" 
+                      Lines="3" 
+                      Placeholder="Wat is de reden van uw melding?" />
+
+        <MudCheckBox @bind-Value="_toestemming" 
+                     Label="Ik geef toestemming om mijn berichten te laten lezen door een beheerder." 
+                     Color="Color.Primary" 
+                     Class="mt-4" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Cancel">Annuleren</MudButton>
+        <MudButton Color="Color.Error" 
+                   Variant="Variant.Filled" 
+                   OnClick="Submit" 
+                   Disabled="!_toestemming || _bezig">
+            @if (_bezig)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Rapporteren
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+    [Parameter] public string MijnId { get; set; } = string.Empty;
+    [Parameter] public string GerapporteerdeId { get; set; } = string.Empty;
+
+    private string _toelichting = string.Empty;
+    private bool _toestemming = false;
+    private bool _bezig = false;
+
+    private void Cancel() => MudDialog.Cancel();
+
+    private async Task Submit()
+    {
+        if (!_toestemming) return;
+
+        _bezig = true;
+        try
+        {
+            await ChatService.RapporteerGebruikerAsync(MijnId, GerapporteerdeId, _toelichting, _toestemming);
+            Snackbar.Add("Melding succesvol verzonden naar de beheerder.", Severity.Success);
+            MudDialog.Close(DialogResult.Ok(true));
+        }
+        catch (Exception ex)
+        {
+            Snackbar.Add($"Fout bij verzenden melding: {ex.Message}", Severity.Error);
+        }
+        finally
+        {
+            _bezig = false;
+        }
+    }
+}

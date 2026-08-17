@@ -1,0 +1,285 @@
+@page "/register"
+@inject UserManager<ApplicationUser> UserManager
+@inject SignInManager<ApplicationUser> SignInManager
+@inject NavigationManager Navigation
+@inject IDialogService DialogService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject IServiceScopeFactory ScopeFactory
+@* JSRuntime toegevoegd voor het verzenden van het verborgen formulier *@
+@inject IJSRuntime JSRuntime
+@using Microsoft.Extensions.DependencyInjection
+@using Microsoft.EntityFrameworkCore
+
+<PageTitle>Registreren – TaalMaat</PageTitle>
+
+<MudContainer MaxWidth="MaxWidth.Small" Class="mt-6">
+    <MudPaper Elevation="4" Class="pa-8">
+        <div class="d-flex align-center justify-center ml-3 mb-6">
+            <MudIcon Icon="@Icons.Material.Filled.Public" Size="Size.Large" Color="Color.Inherit" Class="mr-2" />
+            <MudText Typo="Typo.h4">TaalMaat</MudText>
+        </div>
+        <MudText Typo="Typo.subtitle1" Align="Align.Center" Class="mb-6 mud-text-secondary">
+            Maak een nieuw account aan
+        </MudText>
+
+        @if (!string.IsNullOrEmpty(_foutmelding))
+        {
+            <MudAlert Severity="Severity.Error" Class="mb-4">@_foutmelding</MudAlert>
+        }
+
+        <MudSelect T="GebruikerRol" @bind-Value="_rol" Label="Ik ben een..." Variant="Variant.Outlined" Class="mb-4">
+            <MudSelectItem Value="GebruikerRol.Anderstalig">Anderstalig (ik leer Nederlands)</MudSelectItem>
+            <MudSelectItem Value="GebruikerRol.Vrijwilliger">Vrijwilliger (ik help anderen)</MudSelectItem>
+        </MudSelect>
+
+        @if (_gemeenten.Any())
+        {
+            <MudSelect T="int?" @bind-Value="_gemeenteId" Label="Organisatie (Gemeente)" Variant="Variant.Outlined" Class="mb-4" HelperText="Selecteer de organisatie waarbij je bent ingeschreven of waar je je wilt aanmelden.">
+                @foreach (var g in _gemeenten)
+                {
+                    <MudSelectItem T="int?" Value="@g.Id">@g.Naam</MudSelectItem>
+                }
+            </MudSelect>
+        }
+
+        <MudTextField @bind-Value="_voornaam"
+                      Label="Voornaam"
+                      Variant="Variant.Outlined"
+                      Class="mb-4" Immediate="true"
+                      UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "off" } })" />
+
+        <MudTextField @bind-Value="_achternaam"
+                      Label="Achternaam"
+                      Variant="Variant.Outlined"
+                      Class="mb-4" Immediate="true"
+                      UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "off" } })" />
+
+        <MudTextField @bind-Value="_email"
+                      Label="E-mailadres"
+                      Variant="Variant.Outlined"
+                      InputType="InputType.Email"
+                      UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "off" } })"
+                      Class="mb-4" Immediate="true" />
+
+        <MudTextField @bind-Value="_wachtwoord"
+                      Label="Wachtwoord"
+                      Variant="Variant.Outlined"
+                      InputType="InputType.Password"
+                      Class="mb-4"
+                      HelperText="Min. 8 tekens, hoofdletter en cijfer vereist"
+                      Immediate="true"
+                      UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "new-password" } })" />
+
+        <MudTextField @bind-Value="_wachtwoordBevestiging"
+                      Label="Wachtwoord bevestigen"
+                      Variant="Variant.Outlined"
+                      InputType="InputType.Password"
+                      Class="mb-4" Immediate="true"
+                      UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "new-password" } })" />
+
+        <MudTextField @bind-Value="_geheimWoord"
+                      Label="Geheim woord (voor wachtwoord reset)"
+                      Variant="Variant.Outlined"
+                      InputType="InputType.Password"
+                      Class="mb-4"
+                      HelperText="Onthoud dit goed! U heeft dit nodig om uw wachtwoord te resetten."
+                      Immediate="true"
+                      UserAttributes="@(new Dictionary<string, object> { { "autocomplete", "off" } })" />
+
+        <MudTextField @bind-Value="_contactPhoneNumber"
+                      Label="Telefoonnummer (alleen zichtbaar voor de admin om contact met je op te nemen)"
+                      Variant="Variant.Outlined"
+                      InputType="InputType.Telephone"
+                      Class="mb-4" Immediate="true" />
+
+        <MudTextField @bind-Value="_hobbies"
+                      Label="Hobbies & interesses"
+                      Variant="Variant.Outlined"
+                      Class="mb-4"
+                      HelperText="Bijv. lezen, fietsen, koken"
+                      Immediate="true" />
+
+        <MudTextField @bind-Value="_shortBio"
+                      Label="Korte introductie over uzelf"
+                      Variant="Variant.Outlined"
+                      Lines="3"
+                      Class="mb-4"
+                      HelperText="Max. 300 tekens - zichtbaar voor andere gebruikers"
+                      Immediate="true" />
+
+        <div class="mb-6">
+            <MudCheckBox @bind-Value="_accepteertVoorwaarden" Color="Color.Primary">
+                Ik aanvaard de <MudLink Underline="Underline.Always" OnClick="ToonVoorwaarden">Gebruiksvoorwaarden en het Privacybeleid</MudLink>
+            </MudCheckBox>
+        </div>
+
+        <MudButton Variant="Variant.Filled"
+                   Color="Color.Primary"
+                   FullWidth="true"
+                   Size="Size.Large"
+                   Disabled="_bezig || !_accepteertVoorwaarden"
+                   OnClick="HandleRegister">
+            @if (_bezig)
+            {
+                <MudProgressCircular Size="Size.Small" Indeterminate="true" Class="mr-2" />
+            }
+            Account aanmaken
+        </MudButton>
+
+        <MudText Align="Align.Center" Class="mt-4">
+            Al een account? <MudLink Href="/login">Inloggen</MudLink>
+        </MudText>
+    </MudPaper>
+</MudContainer>
+
+@if (_registrerenGelukt)
+{
+    @* Verborgen formulier om een veilige POST-aanvraag uit te voeren na succesvolle registratie *@
+    <form id="secureRegisterLoginForm" method="post" action="/Account/PerformLogin" style="display:none;">
+        <input type="hidden" name="email" value="@_email" />
+        <input type="hidden" name="code" value="@_wachtwoord" />
+    </form>
+}
+
+@code {
+    private string _voornaam = string.Empty;
+    private string _achternaam = string.Empty;
+    private string _email = string.Empty;
+    private string _wachtwoord = string.Empty;
+    private string _wachtwoordBevestiging = string.Empty;
+    private string _geheimWoord = string.Empty;
+    private string? _contactPhoneNumber;
+    private string? _hobbies;
+    private string? _shortBio;
+    private GebruikerRol _rol = GebruikerRol.Anderstalig;
+    private bool _accepteertVoorwaarden = false;
+    private string _foutmelding = string.Empty;
+    private bool _bezig = false;
+    private List<Gemeente> _gemeenten = new();
+    private int? _gemeenteId;
+
+    @* Status om het POST formulier te activeren na registratie *@
+    private bool _registrerenGelukt = false;
+
+    protected override async Task OnInitializedAsync()
+    {
+        try
+        {
+            using var scope = ScopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<TaalMaat.Infrastructure.Data.ApplicationDbContext>();
+            _gemeenten = await db.Gemeenten.ToListAsync();
+            if (_gemeenten.Any())
+            {
+                _gemeenteId = _gemeenten.First().Id;
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading gemeenten: {ex.Message}");
+        }
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            try
+            {
+                var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+                if (authState.User.Identity?.IsAuthenticated == true)
+                {
+                    Navigation.NavigateTo("/", forceLoad: true);
+                }
+            }
+            catch { }
+        }
+
+        @* Voer JavaScript uit zodra het formulier in de DOM zit (na succesvolle registratie) *@
+        if (_registrerenGelukt)
+        {
+            _registrerenGelukt = false;
+            await JSRuntime.InvokeVoidAsync("eval", "document.getElementById('secureRegisterLoginForm').submit();");
+        }
+    }
+
+    private async Task ToonVoorwaarden()
+    {
+        var parameters = new DialogParameters();
+        var options = new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true, CloseButton = true };
+        await DialogService.ShowAsync<VoorwaardenDialog>("Gebruiksvoorwaarden & Privacybeleid", parameters, options);
+    }
+
+    private async Task HandleRegister()
+    {
+        _bezig = true;
+        _foutmelding = string.Empty;
+        StateHasChanged();
+
+        try
+        {
+            if (string.IsNullOrWhiteSpace(_voornaam) || string.IsNullOrWhiteSpace(_achternaam) || string.IsNullOrWhiteSpace(_email) || string.IsNullOrWhiteSpace(_wachtwoord) || string.IsNullOrWhiteSpace(_geheimWoord))
+            {
+                _foutmelding = "Vul alstublieft alle verplichte velden in.";
+                _bezig = false;
+                return;
+            }
+
+            if (_geheimWoord.Length < 4)
+            {
+                _foutmelding = "Geheim woord moet minimaal 4 tekens bevatten.";
+                _bezig = false;
+                return;
+            }
+
+            if (_wachtwoord != _wachtwoordBevestiging)
+            {
+                _foutmelding = "Wachtwoorden komen niet overeen.";
+                _bezig = false;
+                return;
+            }
+
+            var passwordHasher = new PasswordHasher<ApplicationUser>();
+            var gebruiker = new ApplicationUser
+            {
+                UserName = _email,
+                Email = _email,
+                Voornaam = _voornaam,
+                Achternaam = _achternaam,
+                ContactPhoneNumber = _contactPhoneNumber,
+                Hobbies = _hobbies,
+                ShortBio = _shortBio,
+                Rol = _rol,
+                AccepteertVoorwaarden = _accepteertVoorwaarden,
+                IsGeaccepteerd = _rol == GebruikerRol.Anderstalig,
+                IsActief = true,
+                GemeenteId = _gemeenteId
+            };
+
+            gebruiker.GeheimWoord = passwordHasher.HashPassword(gebruiker, _geheimWoord);
+
+            var resultaat = await UserManager.CreateAsync(gebruiker, _wachtwoord);
+
+            if (resultaat.Succeeded)
+            {
+                var rolNaam = _rol.ToString();
+                await UserManager.AddToRoleAsync(gebruiker, rolNaam);
+
+                @* In plaats van de onveilige GET navigatie, activeren we de veilige POST formulier *@
+                _registrerenGelukt = true;
+            }
+            else
+            {
+                _foutmelding = string.Join(" ", resultaat.Errors.Select(e => e.Description));
+            }
+        }
+        catch (Exception ex)
+        {
+            _foutmelding = $"Er is een fout opgetreden: {ex.Message}";
+        }
+        finally
+        {
+            _bezig = false;
+            StateHasChanged();
+        }
+    }
+}

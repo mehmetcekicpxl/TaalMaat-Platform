@@ -1,0 +1,101 @@
+@using TaalMaat.Core.Entities
+@using TaalMaat.Core.Interfaces
+@using System.Globalization
+@inject IBeschikbaarheidRepository BeschikbaarheidRepo
+
+<MudDialog>
+    <DialogContent>
+        <MudText Typo="Typo.body2" Class="mb-4">
+            Kies een geschikte dag en tijdstip waarop uw vrijwilliger beschikbaar is om direct een sessie in te plannen.
+        </MudText>
+
+        @if (_beschikbaarheden == null)
+        {
+            <MudProgressLinear Indeterminate="true" />
+        }
+        else if (!_beschikbaarheden.Any())
+        {
+            <MudAlert Severity="Severity.Warning" Class="mb-4">
+                Deze vrijwilliger heeft momenteel geen vaste beschikbaarheidsuren geregistreerd.
+            </MudAlert>
+        }
+        else
+        {
+            <MudSelect T="Beschikbaarheid" Label="Beschikbare Tijden" @bind-Value="_gekozenSlot" Class="mb-4">
+                @foreach (var slot in _beschikbaarheden.OrderBy(x => x.DagVanDeWeek).ThenBy(x => x.StartTijd))
+                {
+                    <MudSelectItem Value="@slot">@_dagNamen[slot.DagVanDeWeek], @slot.StartTijd.ToString("HH:mm") - @slot.EindTijd.ToString("HH:mm")</MudSelectItem>
+                }
+            </MudSelect>
+
+            @if (_gekozenSlot != null)
+            {
+                <MudDatePicker Label="Kies de precieze datum"
+                               @bind-Date="_gekozenDatum"
+                               MinDate="DateTime.Today"
+                               ShowToolbar="false"
+                               Culture="@(new CultureInfo("nl-BE"))" />
+
+                @if (_gekozenDatum.HasValue && _gekozenDatum.Value.DayOfWeek != _gekozenSlot.DagVanDeWeek)
+                {
+                    <MudText Color="Color.Error" Typo="Typo.caption" Class="mt-1 d-block">
+                        De geselecteerde datum is geen @_dagNamen[_gekozenSlot.DagVanDeWeek]. Kies a.u.b. de juiste dag op de kalender.
+                    </MudText>
+                }
+            }
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Annuleren">Annuleren</MudButton>
+        <MudButton Color="Color.Primary" Variant="Variant.Filled" OnClick="Bevestigen"
+                   Disabled="@(MagBevestigen() == false)">
+            Plan Sessie
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] MudDialogInstance MudDialog { get; set; } = null!;
+
+    [Parameter]
+    public string VrijwilligerId { get; set; } = string.Empty;
+
+    private List<Beschikbaarheid>? _beschikbaarheden;
+    private Beschikbaarheid? _gekozenSlot;
+    private DateTime? _gekozenDatum;
+
+    private readonly Dictionary<DayOfWeek, string> _dagNamen = new()
+    {
+        [DayOfWeek.Monday] = "Maandag",
+        [DayOfWeek.Tuesday] = "Dinsdag",
+        [DayOfWeek.Wednesday] = "Woensdag",
+        [DayOfWeek.Thursday] = "Donderdag",
+        [DayOfWeek.Friday] = "Vrijdag",
+        [DayOfWeek.Saturday] = "Zaterdag",
+        [DayOfWeek.Sunday] = "Zondag",
+    };
+
+    protected override async Task OnInitializedAsync()
+    {
+        _beschikbaarheden = (await BeschikbaarheidRepo.GetForGebruikerAsync(VrijwilligerId)).ToList();
+    }
+
+    private void Annuleren() => MudDialog.Cancel();
+
+    private void Bevestigen()
+    {
+        if (MagBevestigen())
+        {
+            var geplandeTijd = _gekozenDatum!.Value.Date.Add(_gekozenSlot!.StartTijd.ToTimeSpan());
+            MudDialog.Close(DialogResult.Ok(geplandeTijd));
+        }
+    }
+
+    private bool MagBevestigen()
+    {
+        return _gekozenSlot != null &&
+               _gekozenDatum.HasValue &&
+               _gekozenDatum.Value.DayOfWeek == _gekozenSlot.DagVanDeWeek &&
+               _gekozenDatum.Value.Date >= DateTime.Today;
+    }
+}

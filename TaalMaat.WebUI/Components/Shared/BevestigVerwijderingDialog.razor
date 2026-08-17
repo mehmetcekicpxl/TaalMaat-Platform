@@ -1,0 +1,43 @@
+<!-- BevestigVerwijderingDialog: GDPR Recht op Vergetelheid bevestiging -->
+<MudDialog>
+    <TitleContent>
+        <MudText Typo="Typo.h6" Color="Color.Error">
+            Account Definitief Verwijderen
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        <MudAlert Severity="Severity.Error" Class="mb-4">
+            <strong>Let op!</strong> Dit kan niet ongedaan worden gemaakt.
+        </MudAlert>
+        <MudText Typo="Typo.body1" Class="mb-4">
+            Al uw persoonlijke gegevens worden <strong>definitief en onherroepelijk gewist</strong>
+            conform de AVG (Recht op Vergetelheid – Art. 17).
+        </MudText>
+        <MudText Typo="Typo.body2" Class="mb-4 mud-text-secondary">
+            Dit omvat: uw e-mailadres, telefoonnummer, hobbies, introductietekst
+            en alle buddyverbindingen.
+        </MudText>
+        <MudTextField @bind-Value="_bevestigingsTekst"
+                      Label="Typ 'VERWIJDER' ter bevestiging"
+                      Variant="Variant.Outlined"
+                      Immediate="true" />
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="Annuleer" Variant="Variant.Outlined">Annuleren</MudButton>
+        <MudButton OnClick="Bevestig"
+                   Variant="Variant.Filled"
+                   Color="Color.Error"
+                   Disabled="@(_bevestigingsTekst != "VERWIJDER")">
+            Definitief Verwijderen
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    [CascadingParameter] private MudDialogInstance MudDialog { get; set; } = null!;
+
+    private string _bevestigingsTekst = string.Empty;
+
+    private void Annuleer() => MudDialog.Cancel();
+    private void Bevestig() => MudDialog.Close(DialogResult.Ok(true));
+}

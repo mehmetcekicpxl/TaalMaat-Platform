@@ -1,0 +1,97 @@
+@page "/volunteer"
+@attribute [Authorize(Roles = "Vrijwilliger")]
+@inject BuddyService BuddyService
+@inject AuthenticationStateProvider AuthStateProvider
+@inject UserManager<ApplicationUser> UserManager
+@inject NavigationManager Navigation
+
+<PageTitle>Vrijwilliger Dashboard – TaalMaat</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-6">Welkom, vrijwilliger!</MudText>
+
+@if (_aantalActieveBuddies >= 3)
+{
+    <MudAlert Severity="Severity.Success" Class="mb-4">
+        U heeft het maximum aantal buddies (3) bereikt. U bent niet zichtbaar in de zoeklijst.
+    </MudAlert>
+}
+else
+{
+    <MudAlert Severity="Severity.Info" Class="mb-4">
+        U bent zichtbaar voor anderstaligen (@_aantalActieveBuddies/3 actieve buddies).
+    </MudAlert>
+}
+
+<MudGrid Spacing="4">
+    <MudItem xs="12" sm="6">
+        <MudButton Href="/volunteer/beschikbaarheid"
+                   Variant="Variant.Filled" Color="Color.Primary"
+                   FullWidth="true" Size="Size.Large"
+                   Style="min-height:100px; font-size:1.2rem;"
+                   StartIcon="@Icons.Material.Filled.CalendarMonth">
+            Mijn beschikbaarheid
+        </MudButton>
+    </MudItem>
+    <MudItem xs="12" sm="6">
+        <MudBadge Content="@_aantalInkomend"
+                  Color="Color.Error"
+                  Overlap="true"
+                  Visible="_aantalInkomend > 0"
+                  Style="width: 100%; display: flex;">
+            <MudButton Href="/volunteer/verzoeken"
+                       Variant="Variant.Filled"
+                       Color="Color.Warning"
+                       FullWidth="true"
+                       Size="Size.Large"
+                       Style="min-height:100px; font-size:1.2rem;"
+                       StartIcon="@Icons.Material.Filled.Inbox">
+                Inkomende verzoeken
+            </MudButton>
+        </MudBadge>
+    </MudItem>
+    <MudItem xs="12" sm="6">
+        <MudButton Href="/volunteer/buddies"
+                   Variant="Variant.Filled" Color="Color.Success"
+                   FullWidth="true" Size="Size.Large"
+                   Style="min-height:100px; font-size:1.2rem;"
+                   StartIcon="@Icons.Material.Filled.People">
+            Mijn buddies (@_aantalActieveBuddies)
+        </MudButton>
+    </MudItem>
+    <MudItem xs="12" sm="6">
+        <MudButton Href="/profiel"
+                   Variant="Variant.Filled" Color="Color.Default"
+                   FullWidth="true" Size="Size.Large"
+                   Style="min-height:100px; font-size:1.2rem;"
+                   StartIcon="@Icons.Material.Filled.Person">
+            Mijn profiel
+        </MudButton>
+    </MudItem>
+</MudGrid>
+
+@code {
+    private int _aantalActieveBuddies = 0;
+    private int _aantalInkomend = 0;
+
+    protected override async Task OnInitializedAsync()
+    {
+        var authState = await AuthStateProvider.GetAuthenticationStateAsync();
+        var userId = authState.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+
+        if (userId != null)
+        {
+            var user = await UserManager.FindByIdAsync(userId);
+            if (user != null && (user.IsAfgekeurd || !user.IsGeaccepteerd || !user.HeeftWachtkamerGezien))
+            {
+                Navigation.NavigateTo("/wachtkamer", forceLoad: true);
+                return;
+            }
+
+            var buddies = await BuddyService.GetActieveBuddiesVanVrijwilliger(userId);
+            _aantalActieveBuddies = buddies.Count();
+
+            var verzoeken = await BuddyService.GetInkomendeVerzoek(userId);
+            _aantalInkomend = verzoeken.Count(v => v.Status == BuddyStatus.Wachtend);
+        }
+    }
+}
