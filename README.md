@@ -84,7 +84,7 @@ Stel, je wilt een "Review/Beoordeling" systeem toevoegen na een videogesprek:
 ### 2. Stappen
 1. **Clone de repository:**
    ```bash
-   git clone https://github.com/mehmetcekicpxl/TaalMaat
+   git clone https://github.com/mehmetcekicpxl/TaalMaat-Platform
    ```
 2. **Database Connectie:** 
    Open het bestand `appsettings.json` (en `appsettings.Development.json`) in het project `TaalMaat.WebUI` en update de `DefaultConnection` met jouw database connectiestring.
